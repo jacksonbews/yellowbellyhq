@@ -1,0 +1,126 @@
+rules_version = '2';
+// ================================================================
+// YELLOW BELLY HQ — Firestore security rules
+// Access levels: owner-dev, owner, studio-admin, manager-admin, team
+// IMPORTANT: replace nikkichadwickbews@gmail.com below if your
+// Google sign-in address is different (it is the bootstrap admin).
+// NOTE: the "own department only" limit for manager-admin is applied
+// in the app UI; these rules enforce the broader manager tier.
+// ================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function myEmail() { return request.auth.token.email.lower(); }
+
+    // Nikki can always act as owner-dev, even before any data exists.
+    function bootstrapAdmin() {
+      return signedIn() && myEmail() == 'nikkichadwickbews@gmail.com';
+    }
+
+    // The emails/{email} mapping links a Google account to a team member.
+    function onTeam() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/emails/$(myEmail()));
+    }
+    function myMapping() {
+      return get(/databases/$(database)/documents/emails/$(myEmail())).data;
+    }
+    function myMemberId() { return myMapping().memberId; }
+    function isOwnerDev() {
+      return bootstrapAdmin() || (onTeam() && myMapping().role == 'owner-dev');
+    }
+    function isOwner() {
+      return isOwnerDev() || (onTeam() && myMapping().role == 'owner');
+    }
+    function canAssign() {
+      return isOwner() ||
+        (onTeam() && myMapping().role in ['studio-admin', 'manager-admin']);
+    }
+
+    // ---------- team ----------
+    // add / remove members: both Ownership tiers.
+    // editing access level (role) / department: Ownership & Developer only.
+    match /team/{memberId} {
+      allow read: if onTeam() || bootstrapAdmin();
+      allow create, delete: if isOwner();
+      // owner-dev edits anyone; people edit their own profile but not
+      // their own access level or department
+      allow update: if isOwnerDev() ||
+        (onTeam() && myMemberId() == memberId &&
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'dept']));
+    }
+
+    // ---------- email → member mapping ----------
+    match /emails/{email} {
+      allow read: if signedIn();
+      // both Ownership tiers manage mappings (needed to add/remove members)
+      allow write: if isOwner();
+      // a member may move their own mapping when they change their email
+      allow create: if onTeam() &&
+        request.resource.data.memberId == myMemberId() &&
+        request.resource.data.role == myMapping().role;
+      allow delete: if onTeam() && resource.data.memberId == myMemberId();
+    }
+
+    // ---------- tasks ----------
+    match /tasks/{taskId} {
+      allow read: if onTeam();
+      // anyone on the team can create a task for THEMSELVES;
+      // manager tiers and above can assign others
+      allow create: if onTeam() &&
+        request.resource.data.assignedBy == myMemberId() &&
+        (canAssign() ||
+         request.resource.data.assigneeIds.hasOnly([myMemberId()]));
+      // status changes + comments are open to the team; changing WHO a
+      // task is assigned to needs a manager tier (or assigning yourself)
+      allow update: if onTeam() &&
+        (canAssign() ||
+         resource.data.assignedBy == myMemberId() ||
+         request.resource.data.assigneeIds == resource.data.assigneeIds ||
+         request.resource.data.assigneeIds.hasOnly([myMemberId()]));
+      allow delete: if canAssign() ||
+        (onTeam() && (resource.data.assignedBy == myMemberId() ||
+                      myMemberId() in resource.data.assigneeIds));
+    }
+
+    // ---------- notifications ----------
+    match /notifications/{id} {
+      // anyone on the team may create a notification FOR someone else
+      allow create: if onTeam() && request.resource.data.actorId == myMemberId();
+      // you may only read / mark-read / clear your own
+      allow read, update, delete: if onTeam() && resource.data.userId == myMemberId();
+    }
+
+    // ---------- company docs (Ownership tiers only can edit) ----------
+    match /docSections/{id} {
+      allow read: if onTeam();
+      allow write: if isOwner();
+    }
+    // ---------- studios & their checklists ----------
+    // studio list: owners manage. checklist items: any team member can
+    // tick/edit (the app limits who sees which city's studios).
+    match /studios/{id} {
+      allow read: if onTeam();
+      allow write: if isOwner();
+    }
+    match /studioTasks/{id} {
+      allow read: if onTeam();
+      allow write: if onTeam();
+    }
+
+    match /docs/{id} {
+      // Per-file visibility ("Who can see") is enforced in the app UI:
+      // non-owners only ever see files that are public, theirs, shared
+      // with them, or assigned to them.
+      // NOTE for go-live hardening: to enforce this at the database level
+      // too, split the docs listener in store.js into per-viewer queries
+      // (visibility=='everyone', viewerIds array-contains me, assigneeIds
+      // array-contains me, uploadedBy==me) and tighten this read rule to
+      // match. A single unconstrained collection listener can't be used
+      // with a restrictive read rule.
+      allow read: if onTeam();
+      allow write: if isOwner();
+    }
+  }
+}
