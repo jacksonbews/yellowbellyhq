@@ -30,6 +30,16 @@ var Bookings = (function () {
     if (!name) return -1;
     return MON3.indexOf(String(name).trim().toLowerCase().slice(0, 3));
   }
+  /* Turn an Airtable date value into a YYYY-MM-DD string WITHOUT shifting the
+     day by the viewer's timezone: if it already starts with an ISO date, keep
+     that date exactly as Airtable stored it. */
+  function isoDate(raw) {
+    if (raw == null) return null;
+    var s = String(raw);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    var d = new Date(raw);
+    return isNaN(d) ? null : d.toISOString().slice(0, 10);
+  }
 
   /* ---------------- sample data (deterministic) ---------------- */
   function seededRand(seed) {
@@ -86,7 +96,7 @@ var Bookings = (function () {
         })
         .then(function (j) {
           all = all.concat(j.records || []);
-          if (j.offset && all.length < 6000) return page(j.offset);
+          if (j.offset && all.length < 100000) return page(j.offset);
           return all;
         });
     }
@@ -119,7 +129,7 @@ var Bookings = (function () {
     var out = {
       loc: find([/^country$/i, /country|location|studio|city|site|region|office|branch/i], "string"),
       photographer: find([/^photographer$/i, /photograph|shooter|creative|snapper/i], "string"),
-      date: find([/^date$/i, /date|shoot day|when|session|scheduled|booked/i], "date"),
+      date: find([/^appointment date$/i, /appointment/i, /^date$/i, /date|shoot day|when|session|scheduled|booked/i], "date"),
       month: find([/^month$/i, /month/i], "string"),
       client: find([/client|customer/i, /^name$/i, /name/i], "string"),
       status: find([/status|stage|state/i], "string"),
@@ -147,9 +157,8 @@ var Bookings = (function () {
     var F = detectFields(records);
     return records.map(function (r) {
       var f = r.fields || {};
-      var d = F.date && f[F.date] != null ? new Date(f[F.date]) : null;
-      var iso = d && !isNaN(d) ? d.toISOString().slice(0, 10) : null;
-      var mName = F.month ? str(f[F.month]) : (iso ? MONTHS[d.getMonth()] : "");
+      var iso = F.date ? isoDate(f[F.date]) : null;
+      var mName = F.month ? str(f[F.month]) : (iso ? MONTHS[+iso.slice(5, 7) - 1] : "");
       return {
         date: iso,
         monthName: mName,
@@ -167,9 +176,8 @@ var Bookings = (function () {
     var F = detectFields(records);
     return records.map(function (r) {
       var f = r.fields || {};
-      var d = F.date && f[F.date] != null ? new Date(f[F.date]) : null;
-      var iso = d && !isNaN(d) ? d.toISOString().slice(0, 10) : null;
-      var mName = F.month ? str(f[F.month]) : (iso ? MONTHS[d.getMonth()] : "");
+      var iso = F.date ? isoDate(f[F.date]) : null;
+      var mName = F.month ? str(f[F.month]) : (iso ? MONTHS[+iso.slice(5, 7) - 1] : "");
       function truthy(v) { return v === true || v === 1 || v === "checked" || v === "true" || v === "Yes"; }
       return {
         date: iso,
@@ -203,9 +211,7 @@ var Bookings = (function () {
     var F = detectFields(records), valField = detectValueField(records, F);
     return records.map(function (r) {
       var f = r.fields || {};
-      var d = F.date && f[F.date] != null ? new Date(f[F.date]) : null;
-      var iso = d && !isNaN(d) ? d.toISOString().slice(0, 10) : null;
-      return { date: iso, location: F.loc ? (str(f[F.loc]) || "Unknown") : "Unknown", value: valField != null ? numVal(f[valField]) : 0 };
+      return { date: F.date ? isoDate(f[F.date]) : null, location: F.loc ? (str(f[F.loc]) || "Unknown") : "Unknown", value: valField != null ? numVal(f[valField]) : 0 };
     }).filter(function (r) { return r.date; });
   }
 
@@ -215,9 +221,8 @@ var Bookings = (function () {
     var F = detectFields(records), valField = detectValueField(records, F);
     return records.map(function (r) {
       var f = r.fields || {};
-      var d = F.date && f[F.date] != null ? new Date(f[F.date]) : null;
-      var iso = d && !isNaN(d) ? d.toISOString().slice(0, 10) : null;
-      var mName = F.month ? str(f[F.month]) : (iso ? MONTHS[d.getMonth()] : "");
+      var iso = F.date ? isoDate(f[F.date]) : null;
+      var mName = F.month ? str(f[F.month]) : (iso ? MONTHS[+iso.slice(5, 7) - 1] : "");
       return {
         date: iso, monthName: mName,
         location: F.loc ? (str(f[F.loc]) || "Unknown") : "Unknown",
@@ -407,8 +412,6 @@ var Bookings = (function () {
       if (edRe) main.appendChild(edRe);
       if (edEx) main.appendChild(edEx);
     }
-
-    main.appendChild(recentTable(rows));
   };
 
   /* ---------------- connect panel ---------------- */
@@ -977,35 +980,6 @@ var Bookings = (function () {
     var card = UI.el('<div class="chart-card"><div class="comments-title">Bookings by location</div>' + svg + "</div>");
     attachTips(card);
     return card;
-  }
-
-  /* ---------------- recent bookings table ---------------- */
-  function recentTable(rows) {
-    var hasStatus = rows.some(function (r) { return r.status; });
-    var hasPhotog = rows.some(function (r) { return r.photographer; });
-    var recent = rows.slice();
-    if (rows.some(function (r) { return r.date; })) {
-      recent.sort(function (a, b) { return (a.date || "") < (b.date || "") ? 1 : -1; });
-    }
-    recent = recent.slice(0, 12);
-    var cols = "<th>" + (rows.some(function (r) { return r.date; }) ? "Date" : "Month") + "</th><th>Client</th><th>Location</th>" +
-      (hasPhotog ? "<th>Photographer</th>" : "") + (hasStatus ? "<th>Status</th>" : "");
-    var wrap = UI.el('<div class="chart-card bk-table-card"><div class="comments-title">Recent bookings ( ' + rows.length.toLocaleString("en-GB") + " total )</div>" +
-      '<div class="table-wrap" style="border:0"><table class="tasks bk-table"><thead><tr>' + cols +
-      "</tr></thead><tbody></tbody></table></div></div>");
-    var tbody = wrap.querySelector("tbody");
-    recent.forEach(function (r) {
-      var when = r.date ? UI.fmtDate(r.date) : (r.monthName || "—");
-      tbody.appendChild(UI.el(
-        "<tr style=\"cursor:default\"><td>" + UI.esc(when) + "</td>" +
-        "<td>" + UI.esc(r.client || "—") + "</td>" +
-        "<td>" + UI.esc(r.location) + "</td>" +
-        (hasPhotog ? "<td>" + UI.esc(r.photographer || "—") + "</td>" : "") +
-        (hasStatus ? "<td>" + UI.esc(r.status || "—") + "</td>" : "") +
-        "</tr>"
-      ));
-    });
-    return wrap;
   }
 
   return api;
