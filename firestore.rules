@@ -13,9 +13,12 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function myEmail() { return request.auth.token.email.lower(); }
 
-    // Nikki can always act as owner-dev, even before any data exists.
+    // These accounts can always act as owner-dev, even before any data exists.
     function bootstrapAdmin() {
-      return signedIn() && myEmail() == 'nikkichadwickbews@gmail.com';
+      return signedIn() && myEmail() in [
+        'nikkichadwickbews@gmail.com',
+        'jackson@yellowbellyphoto.com'
+      ];
     }
 
     // The emails/{email} mapping links a Google account to a team member.
@@ -106,7 +109,37 @@ service cloud.firestore {
     }
     match /studioTasks/{id} {
       allow read: if onTeam();
+      // isOwner() lets the bootstrap admin seed these on first login
+      allow write: if onTeam() || isOwner();
+    }
+    // weekly checklist history (archived automatically each week)
+    match /studioArchive/{id} {
+      allow read: if onTeam();
       allow write: if onTeam();
+    }
+
+    // ---------- cities & timezones ----------
+    match /cities/{id} {
+      allow read: if onTeam();
+      allow write: if isOwner();
+    }
+
+    // ---------- managed lists (departments live under meta) ----------
+    match /meta/{id} {
+      allow read: if onTeam();
+      allow write: if isOwner();
+    }
+
+    // ---------- supplier contacts (Ownership tiers) ----------
+    match /suppliers/{id} {
+      allow read: if onTeam();
+      allow write: if isOwner();
+    }
+
+    // ---------- bug / idea tickets (reported + resolved by Ownership) ----------
+    match /tickets/{id} {
+      allow read: if onTeam();
+      allow create, update, delete: if isOwner();
     }
 
     match /docs/{id} {

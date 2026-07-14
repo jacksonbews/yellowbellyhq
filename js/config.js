@@ -6,17 +6,15 @@
    PREVIEW MODE — everything works and saves in this browser only.
    ================================================================ */
 
-var FIREBASE_CONFIG = null;
-/* Example:
 var FIREBASE_CONFIG = {
-  apiKey: "...",
-  authDomain: "yellow-belly-hq.firebaseapp.com",
-  projectId: "yellow-belly-hq",
-  storageBucket: "yellow-belly-hq.appspot.com",
-  messagingSenderId: "...",
-  appId: "..."
+  apiKey: "AIzaSyAdl5y4kp0oC1q6_2o0SgNhyTmzHglMAVQ",
+  authDomain: "yellowbelly-hq.firebaseapp.com",
+  projectId: "yellowbelly-hq",
+  storageBucket: "yellowbelly-hq.firebasestorage.app",
+  messagingSenderId: "129769311846",
+  appId: "1:129769311846:web:328c89bda47cee14bce7a7",
+  measurementId: "G-QPXXMX9VWQ"
 };
-*/
 
 /* ---------- Task statuses (board column order) ---------- */
 /* Pipeline columns. Internal ids kept stable; only labels changed:
@@ -115,7 +113,7 @@ var TEAM_SEED = [
   { id: "hannah-mciver",         name: "Hannah McIver",          title: "Head Of Relations",                                                  role: "manager-admin", dept: "Customer Success Associate", email: "" },
   { id: "harryet-belwood-howard",name: "Harryet Belwood-Howard", title: "Operations Manager",                                                 role: "manager-admin", dept: "Operations",       email: "" },
   { id: "jack-douglas",          name: "Jack Douglas",           title: "Photographer",                                                       role: "team",          dept: "Photographer",      email: "" },
-  { id: "jackson-bews",          name: "Jackson Bews",           title: "Founder",                                                            role: "owner",         dept: "Leadership",       email: "" },
+  { id: "jackson-bews",          name: "Jackson Bews",           title: "Founder",                                                            role: "owner-dev",     dept: "Leadership",       email: "jackson@yellowbellyphoto.com" },
   { id: "jalen-gregory-martin",  name: "Jalen Gregory Martin",   title: "Photographer",                                                       role: "team",          dept: "Photographer",      email: "" },
   { id: "kalene-jeans",          name: "Kalene Jeans",           title: "Photographer / Editor",                                              role: "team",          dept: "Photographer",      email: "" },
   { id: "liv",                   name: "Liv",                    title: "Photographer / Studio Manager / Editor / 101 Producer / Creative Partnerships", role: "studio-admin", dept: "Studio Manager", email: "" },

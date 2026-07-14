@@ -396,6 +396,10 @@ var Store = (function () {
             return;
           }
           fbListen(); fbListenNotifications(); emitAuth("in");
+        }).catch(function () {
+          // a non-team account can't even read the team list → show the gate,
+          // not a hang, with a "try a different account" way out
+          emitAuth("denied");
         });
       });
     }).catch(function (e) {
@@ -420,6 +424,8 @@ var Store = (function () {
       demoResolveIdentity(); emitAuth("in"); return Promise.resolve();
     }
     var provider = new firebase.auth.GoogleAuthProvider();
+    // always let people choose which Google account (so they can switch)
+    provider.setCustomParameters({ prompt: "select_account" });
     return fbAuth.signInWithPopup(provider);
   };
   api.signOut = function () {
