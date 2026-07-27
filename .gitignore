@@ -1,0 +1,5 @@
+# macOS system files
+.DS_Store
+
+# Local dev-server config (machine-specific paths)
+.claude/
