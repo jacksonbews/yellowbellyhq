@@ -749,6 +749,15 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
   width: 300px; max-height: 320px; overflow-y: auto;
   animation: rise .4s var(--ease);
 }
+.ppl-menu input.ppl-search {
+  position: sticky; top: 0; z-index: 2;
+  width: 100%; box-sizing: border-box;
+  border: 0; border-bottom: 1px solid var(--hair);
+  padding: 10px 16px; font-size: 14px; background: var(--bg); outline: 0;
+}
+.ppl-search::placeholder { color: var(--grey); }
+.ppl-search:focus { border-bottom-color: var(--fg); }
+.ppl-empty { padding: 14px; font-size: 13px; color: var(--grey); }
 .ppl-menu-label {
   font-size: 9px; letter-spacing: .16em; text-transform: uppercase;
   color: var(--grey); padding: 12px 14px 6px;
