@@ -10,7 +10,9 @@ var Tasks = (function () {
 
   /* ---------- view preference (per person, per browser) ---------- */
   function viewPref() {
-    return localStorage.getItem("ybhq_view_" + Store.me().id) || "board";
+    var v = localStorage.getItem("ybhq_view_" + Store.me().id) || "board";
+    // the Week view has been removed — anyone left on it falls back to Board
+    return v === "week" ? "board" : v;
   }
   function setViewPref(v) {
     localStorage.setItem("ybhq_view_" + Store.me().id, v);
@@ -125,7 +127,6 @@ var Tasks = (function () {
       '<div class="seg">' +
       '<button data-v="board"' + (view === "board" ? ' class="active"' : "") + ">Board</button>" +
       '<button data-v="table"' + (view === "table" ? ' class="active"' : "") + ">Table</button>" +
-      '<button data-v="week"' + (view === "week" ? ' class="active"' : "") + ">Week</button>" +
       '<button data-v="month"' + (view === "month" ? ' class="active"' : "") + ">Month</button>" +
       "</div>"
     );
@@ -167,7 +168,6 @@ var Tasks = (function () {
 
     if (view === "board") renderBoard(main, tasks);
     else if (view === "table") renderTable(main, tasks);
-    else if (view === "week") renderWeek(main, tasks);
     else if (view === "month") renderMonth(main, tasks);
   };
 
@@ -223,46 +223,6 @@ var Tasks = (function () {
     return nav;
   }
 
-  /* ================= WEEK VIEW ================= */
-  function renderWeek(main, tasks) {
-    var start = startOfWeek(ensureAnchor());
-    var end = addDays(start, 6);
-    var map = byDueDate(tasks);
-    var todayISO = UI.todayStr();
-    var canCreate = true;
-
-    var label = start.getMonth() === end.getMonth()
-      ? start.getDate() + " – " + end.getDate() + " " + MONTHS_SHORT[end.getMonth()] + " " + end.getFullYear()
-      : start.getDate() + " " + MONTHS_SHORT[start.getMonth()] + " – " + end.getDate() + " " + MONTHS_SHORT[end.getMonth()] + " " + end.getFullYear();
-
-    main.appendChild(calNav(label,
-      function (dir) { calAnchor = addDays(startOfWeek(calAnchor), dir * 7); api.render(main); },
-      function () { calAnchor = todayLocal(); api.render(main); }));
-
-    var grid = UI.el('<div class="week-grid"></div>');
-    for (var i = 0; i < 7; i++) {
-      var day = addDays(start, i);
-      var iso = toISO(day);
-      var list = (map[iso] || []).slice().sort(sortForCal);
-      var col = UI.el(
-        '<div class="week-col' + (iso === todayISO ? " today" : "") + '">' +
-        '<div class="week-col-head"><span class="week-dow">' + DOW[i] + "</span>" +
-        '<span class="week-dom">' + day.getDate() + "</span></div>" +
-        '<div class="week-col-body"></div></div>'
-      );
-      var body = col.querySelector(".week-col-body");
-      list.forEach(function (t) { body.appendChild(calPill(t)); });
-      if (canCreate) {
-        (function (isoDay) {
-          body.addEventListener("click", function () { api.openEditor(null, isoDay); });
-        })(iso);
-      }
-      grid.appendChild(col);
-    }
-    main.appendChild(grid);
-    appendUnscheduled(main, tasks);
-  }
-
   /* ================= MONTH VIEW ================= */
   function renderMonth(main, tasks) {
     var anchor = ensureAnchor();
@@ -297,12 +257,10 @@ var Tasks = (function () {
       list.slice(0, 3).forEach(function (t) { body.appendChild(calPill(t)); });
       if (list.length > 3) {
         var more = UI.el('<button class="cal-more">+ ' + (list.length - 3) + " more</button>");
-        (function (isoDay) {
-          more.onclick = function (e) {
-            e.stopPropagation();
-            setViewPref("week"); calAnchor = new Date(isoDay + "T00:00:00"); api.render(main);
-          };
-        })(iso);
+        more.onclick = function (e) {
+          e.stopPropagation();
+          setViewPref("table"); api.render(main);
+        };
         body.appendChild(more);
       }
       (function (isoDay) {
