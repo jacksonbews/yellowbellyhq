@@ -947,6 +947,7 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
 /* the checklist label sits inside a .field in the editor — stop it
    inheriting the uppercase/tiny field-label styling */
 .field .subtask-check {
+  display: flex; align-items: center; gap: 12px;
   text-transform: none; letter-spacing: normal; font-weight: 400;
   color: var(--fg); font-size: 14px; margin: 0;
 }
