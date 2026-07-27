@@ -186,6 +186,8 @@ var Tasks = (function () {
     return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
   }
   function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
+  /* an ISO date six months from today — the standard due date for KPIs */
+  function sixMonthsOut() { var d = new Date(); d.setMonth(d.getMonth() + 6); return toISO(d); }
   function startOfWeek(d) { var x = new Date(d); var wd = (x.getDay() + 6) % 7; x.setDate(x.getDate() - wd); x.setHours(0, 0, 0, 0); return x; }
 
   function byDueDate(tasks) {
@@ -566,6 +568,8 @@ var Tasks = (function () {
         '<td><button type="button" class="kpi-x" aria-label="Remove row">×</button></td>' +
         "</tr>"
       );
+      // KPIs default to a due date six months out
+      tr.querySelector(".kpi-date").value = sixMonthsOut();
       tr.querySelectorAll(".kpi-pri span").forEach(function (sp) {
         sp.onclick = function () {
           tr.querySelectorAll(".kpi-pri span").forEach(function (x) { x.className = ""; });
@@ -610,7 +614,7 @@ var Tasks = (function () {
 
       tr.querySelector(".kpi-x").onclick = function () {
         if (tbody.children.length > 1) tr.remove();
-        else { tr.querySelector(".kpi-title-input").value = ""; tr.querySelector(".kpi-date").value = ""; subtasks.length = 0; renderSub(); updateToggle(); subPanel.classList.add("hidden"); }
+        else { tr.querySelector(".kpi-title-input").value = ""; tr.querySelector(".kpi-date").value = sixMonthsOut(); subtasks.length = 0; renderSub(); updateToggle(); subPanel.classList.add("hidden"); }
       };
       tbody.appendChild(tr);
       return tr;
@@ -649,7 +653,7 @@ var Tasks = (function () {
       Array.prototype.slice.call(tbody.children).forEach(function (tr) {
         var title = tr.querySelector(".kpi-title-input").value.trim();
         if (!title) return;
-        var due = tr.querySelector(".kpi-date").value;
+        var due = tr.querySelector(".kpi-date").value || sixMonthsOut();
         var onPri = tr.querySelector('.kpi-pri span[class^="on-"]');
         var priority = onPri ? onPri.dataset.p : "med";
         var assignee = tr.querySelector(".kpi-assign").value;
