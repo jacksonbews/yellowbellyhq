@@ -118,11 +118,20 @@ var App = (function () {
     setInterval(function () { if (Store.me()) { Store.promoteDueToday(); Store.resetWeeklyStudioTasks(); } }, 5 * 60 * 1000);
 
     /* live re-render on any data change */
+    var pendingRender = false;
     Store.onChange(function () {
       if (!Store.me()) return;
       renderTopbar();
-      /* don't wipe the page while a modal is open (e.g. typing a comment) */
-      if (!document.querySelector(".modal-overlay")) {
+      /* don't wipe the page while a modal is open (e.g. typing a comment) —
+         but remember a change happened so we can catch up when it closes */
+      if (document.querySelector(".modal-overlay")) { pendingRender = true; return; }
+      PAGES[page].render(document.getElementById("main"));
+    });
+    /* when a modal closes, apply any data change that arrived while it was open
+       (e.g. an email you just saved now shows next to the name in Settings) */
+    document.addEventListener("ui:modalclosed", function () {
+      if (pendingRender && Store.me() && !document.querySelector(".modal-overlay")) {
+        pendingRender = false;
         PAGES[page].render(document.getElementById("main"));
       }
     });

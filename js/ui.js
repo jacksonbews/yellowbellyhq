@@ -150,7 +150,13 @@ var UI = (function () {
     return modal;
   };
   api.closeModal = function () {
-    document.getElementById("modal-root").innerHTML = "";
+    var root = document.getElementById("modal-root");
+    if (!root) return;
+    var wasOpen = root.childNodes.length > 0;
+    root.innerHTML = "";
+    // let the app catch up on any data change that arrived while the modal
+    // was open (live re-render is suppressed while a modal is showing)
+    if (wasOpen) document.dispatchEvent(new CustomEvent("ui:modalclosed"));
   };
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") api.closeModal();

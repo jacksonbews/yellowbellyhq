@@ -462,6 +462,16 @@ var Store = (function () {
     return "self";
   };
   api.canAssignOthers = function (m) { return api.assignScope(m) !== "self"; };
+  /* a Department Head is anyone flagged in Settings — they can see the tasks of
+     everyone who shares one of their departments */
+  api.isDeptHead = function (m) { m = m || me; return !!(m && m.deptHead); };
+  /* who may filter the Tasks list by assignee: the two Ownership tiers, Manager
+     Admin, and Department Heads (deliberately NOT plain Studio Admin or Team) */
+  api.canFilterAssignee = function (m) {
+    var mem = m || me;
+    var r = roleOf(mem);
+    return r === "owner-dev" || r === "owner" || r === "manager-admin" || api.isDeptHead(mem);
+  };
   api.assignableMembers = function (m) {
     m = m || me;
     var scope = api.assignScope(m);

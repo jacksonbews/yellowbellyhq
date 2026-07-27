@@ -19,6 +19,19 @@ var Tasks = (function () {
   /* ---------- filtering ---------- */
   function visibleTasks() {
     var tasks = Store.tasks();
+    // Team members only see their own tasks (assigned to them, or created by
+    // them) — UNLESS they're a Department Head, who also sees the tasks of
+    // anyone sharing their department. Managers/Ownership keep the wider view.
+    if (Store.assignScope() === "self") {
+      var meM = Store.me(), myId = meM.id, head = Store.isDeptHead();
+      tasks = tasks.filter(function (t) {
+        if (t.assigneeIds.indexOf(myId) !== -1 || t.assignedBy === myId) return true;
+        if (head) return t.assigneeIds.some(function (id) {
+          var mm = Store.member(id); return mm && Store.sharesDept(mm, meM);
+        });
+        return false;
+      });
+    }
     if (filterAssignee === "me") {
       tasks = tasks.filter(function (t) { return t.assigneeIds.indexOf(Store.me().id) !== -1; });
     } else if (filterAssignee !== "all") {
@@ -86,6 +99,9 @@ var Tasks = (function () {
   /* ================= PAGE ================= */
   api.render = function (main) {
     var me = Store.me();
+    // only Ownership / Ownership & Development / Manager Admin can filter by
+    // assignee — for everyone else the filter is hidden and not applied
+    if (!Store.canFilterAssignee()) filterAssignee = "all";
     var tasks = visibleTasks();
     var view = viewPref();
 
@@ -118,14 +134,22 @@ var Tasks = (function () {
     });
     bar.appendChild(seg);
 
-    var selA = UI.el('<select class="filter-select" title="Filter by assignee"></select>');
-    selA.innerHTML = '<option value="all">Assignee: everyone</option><option value="me">Assignee: me</option>' +
-      Store.team().map(function (m) {
-        return '<option value="' + m.id + '">' + UI.esc(m.name) + "</option>";
-      }).join("");
-    selA.value = filterAssignee;
-    selA.onchange = function () { filterAssignee = selA.value; api.render(main); };
-    bar.appendChild(selA);
+    if (Store.canFilterAssignee()) {
+      // a Department Head (who isn't otherwise a manager/owner) only filters
+      // within their own department; managers/owners filter across everyone
+      var choices = Store.team();
+      if (Store.isDeptHead() && Store.assignScope() === "self") {
+        choices = choices.filter(function (mm) { return mm.id === me.id || Store.sharesDept(mm, me); });
+      }
+      var selA = UI.el('<select class="filter-select" title="Filter by assignee"></select>');
+      selA.innerHTML = '<option value="all">Assignee: everyone</option><option value="me">Assignee: me</option>' +
+        choices.map(function (m) {
+          return '<option value="' + m.id + '">' + UI.esc(m.name) + "</option>";
+        }).join("");
+      selA.value = filterAssignee;
+      selA.onchange = function () { filterAssignee = selA.value; api.render(main); };
+      bar.appendChild(selA);
+    }
 
     var selP = UI.el('<select class="filter-select" title="Filter by priority"></select>');
     selP.innerHTML = '<option value="all">Priority: all</option><option value="high">High</option><option value="med">Med</option><option value="low">Low</option>';
