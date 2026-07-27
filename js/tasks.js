@@ -465,9 +465,6 @@ var Tasks = (function () {
       "</div>" +
       '<div class="field-row">' +
       '  <div class="field"><label>Status</label><div id="tk-status"></div></div>' +
-      '  <div class="field"><label>Tag</label>' +
-      '    <button type="button" class="kpi-toggle" id="tk-kpi"><span class="kpi-dot"></span>KPI</button>' +
-      '    <div class="hint">Mark this task as a company KPI.</div></div>' +
       "</div>" +
       '<div class="field"><label>Assign to</label><div id="tk-assign"></div>' +
       (Store.assignScope() === "self" ? '<div class="hint">Your access level can only assign tasks to yourself — managers assign the rest.</div>' : "") +
@@ -479,9 +476,6 @@ var Tasks = (function () {
     sh.body.querySelector("#tk-due").value = t ? t.dueDate : (prefillDate || "");
     sh.body.querySelector("#tk-pri").appendChild(UI.segRadios(PRIORITIES, priority, function (v) { priority = v; }));
     sh.body.querySelector("#tk-status").appendChild(UI.segRadios(STATUS_OPTIONS, status, function (v) { status = v; }));
-    var kpiBtn = sh.body.querySelector("#tk-kpi");
-    kpiBtn.classList.toggle("on", isKpi);
-    kpiBtn.onclick = function () { isKpi = !isKpi; kpiBtn.classList.toggle("on", isKpi); };
 
     /* recurrence: frequency select + weekly day multi-select */
     var recurSel = sh.body.querySelector("#tk-recur");
