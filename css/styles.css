@@ -1246,6 +1246,22 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
 .bk-daily-card, .bk-pie-card { margin-bottom: 14px; }
 .bk-pie-sub { font-size: 12px; color: var(--grey); margin: -4px 0 6px; }
 .bk-section-head { font-size: 22px; font-weight: 700; margin: 26px 0 12px; letter-spacing: -0.01em; }
+
+/* ---------- Decision Log ---------- */
+.dl-table { min-width: 1120px; }
+.dl-table td { vertical-align: top; }
+.dl-date { white-space: nowrap; color: var(--grey); font-size: 12px; }
+.dl-decision { font-weight: 500; max-width: 230px; }
+.dl-clip { max-width: 200px; }
+.dl-clip-sm { max-width: 120px; }
+.dl-decision, .dl-clip, .dl-clip-sm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-dash { color: var(--hair); }
+.dl-actions { text-align: right; }
+.chip.dl-status { font-weight: 500; }
+.chip.dl-status.dl-done { background: #e7f6e7; color: #1f6b1f; }
+.chip.dl-status.dl-progress { background: #fbef9a; color: #6b5100; }
+.chip.dl-status.dl-hold { background: #ececec; color: #666; }
+.chip.dl-cat { background: var(--cream); color: var(--fg); }
 .chart-svg { width: 100%; height: auto; display: block; }
 .chart-svg .ax { font-size: 10px; fill: var(--grey); font-family: var(--font); }
 .chart-svg .bk-loc { font-size: 11px; fill: var(--fg); }

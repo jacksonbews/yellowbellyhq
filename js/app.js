@@ -5,7 +5,7 @@
 var App = (function () {
   var api = {};
   var page = "tasks";
-  var PAGES = { tasks: Tasks, docs: Docs, team: Team, studio: Studio, reports: Reports, suppliers: Suppliers, tickets: Tickets, settings: Settings, bookings: Bookings };
+  var PAGES = { tasks: Tasks, docs: Docs, team: Team, studio: Studio, reports: Reports, suppliers: Suppliers, tickets: Tickets, settings: Settings, bookings: Bookings, decisions: Decisions };
   api.current = function () { return page; };
 
   function show(id) {
@@ -26,6 +26,7 @@ var App = (function () {
     if ((p === "settings" || p === "bookings" || p === "reports" || p === "suppliers") && !Store.canViewSettings()) p = "tasks";
     if (p === "studio" && !Store.canAccessStudios()) p = "tasks";
     if (p === "tickets" && !Store.isTicketAdmin()) p = "tasks";
+    if (p === "decisions" && !Store.canViewDecisionLog()) p = "tasks";
     page = p;
     document.querySelectorAll(".nav-link").forEach(function (b) {
       b.classList.toggle("active", b.dataset.page === p);
@@ -43,6 +44,7 @@ var App = (function () {
     document.getElementById("nav-studio").classList.toggle("hidden", !Store.canAccessStudios());
     document.getElementById("nav-reports").classList.toggle("hidden", !Store.canViewSettings());
     document.getElementById("nav-suppliers").classList.toggle("hidden", !Store.canViewSettings());
+    document.getElementById("nav-decisions").classList.toggle("hidden", !Store.canViewDecisionLog());
     var nt = document.getElementById("nav-tickets");
     nt.classList.toggle("hidden", !Store.isTicketAdmin());
     nt.querySelector(".nav-badge").textContent = Store.openTicketCount() || "";
