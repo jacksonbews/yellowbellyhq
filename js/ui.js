@@ -150,7 +150,13 @@ var UI = (function () {
     return modal;
   };
   api.closeModal = function () {
-    document.getElementById("modal-root").innerHTML = "";
+    var root = document.getElementById("modal-root");
+    if (!root) return;
+    var wasOpen = root.childNodes.length > 0;
+    root.innerHTML = "";
+    // let the app catch up on any data change that arrived while the modal
+    // was open (live re-render is suppressed while a modal is showing)
+    if (wasOpen) document.dispatchEvent(new CustomEvent("ui:modalclosed"));
   };
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") api.closeModal();
@@ -270,58 +276,79 @@ var UI = (function () {
     var addWrap = api.el('<div class="ppl-add-wrap"></div>');
     var addBtn = api.el('<button type="button" class="btn btn-sm">+ Add people ▾</button>');
     var menu = api.el('<div class="ppl-menu hidden"></div>');
+    var search = api.el('<input type="text" class="ppl-search" placeholder="Type a name…" autocomplete="off">');
+    var rowsEl = api.el('<div class="ppl-rows"></div>');
+    menu.appendChild(search); menu.appendChild(rowsEl);
     addWrap.appendChild(addBtn); addWrap.appendChild(menu);
     wrap.appendChild(addWrap);
+
+    var query = "";
 
     function countIn(g) {
       return g.members.filter(function (m) { return selected.indexOf(m.id) !== -1; }).length;
     }
-    function renderMenu() {
-      menu.innerHTML = '<div class="ppl-menu-label">Quick select</div>';
-      GROUPS.forEach(function (g) {
-        if (!g.members.length) return;
-        var n = countIn(g), all = n === g.members.length;
-        var row = api.el('<button type="button" class="ppl-row ppl-group' + (all ? " on" : "") + '">' +
-          '<span class="ppl-check">' + (all ? "✓" : (n ? "–" : "")) + "</span>" +
-          api.esc(g.label) +
-          '<span class="ppl-n">( ' + (n ? n + "/" : "") + g.members.length + " )</span></button>");
-        row.onclick = function () {
-          if (all) {
-            g.members.forEach(function (m) {
-              var i = selected.indexOf(m.id);
-              if (i !== -1) selected.splice(i, 1);
-            });
-          } else {
-            g.members.forEach(function (m) {
-              if (selected.indexOf(m.id) === -1) selected.push(m.id);
-            });
-          }
-          renderTokens(); renderMenu();
-          if (opts.onChange) opts.onChange(selected);
-        };
-        menu.appendChild(row);
-      });
-      menu.appendChild(api.el('<div class="ppl-menu-label">People</div>'));
-      pickable.forEach(function (m) {
+    function toggleMember(m) {
+      var i = selected.indexOf(m.id);
+      if (i === -1) selected.push(m.id); else selected.splice(i, 1);
+      renderTokens(); renderRows();
+      if (opts.onChange) opts.onChange(selected);
+    }
+    function matches(m, q) {
+      return !q || m.name.toLowerCase().indexOf(q) !== -1 || (m.title || "").toLowerCase().indexOf(q) !== -1;
+    }
+    function renderRows() {
+      rowsEl.innerHTML = "";
+      var q = query.trim().toLowerCase();
+      /* the quick-select groups only make sense when browsing, not searching */
+      if (!q) {
+        rowsEl.appendChild(api.el('<div class="ppl-menu-label">Quick select</div>'));
+        GROUPS.forEach(function (g) {
+          if (!g.members.length) return;
+          var n = countIn(g), all = n === g.members.length;
+          var row = api.el('<button type="button" class="ppl-row ppl-group' + (all ? " on" : "") + '">' +
+            '<span class="ppl-check">' + (all ? "✓" : (n ? "–" : "")) + "</span>" +
+            api.esc(g.label) +
+            '<span class="ppl-n">( ' + (n ? n + "/" : "") + g.members.length + " )</span></button>");
+          row.onclick = function () {
+            if (all) g.members.forEach(function (m) { var i = selected.indexOf(m.id); if (i !== -1) selected.splice(i, 1); });
+            else g.members.forEach(function (m) { if (selected.indexOf(m.id) === -1) selected.push(m.id); });
+            renderTokens(); renderRows();
+            if (opts.onChange) opts.onChange(selected);
+          };
+          rowsEl.appendChild(row);
+        });
+      }
+      rowsEl.appendChild(api.el('<div class="ppl-menu-label">People</div>'));
+      var people = pickable.filter(function (m) { return matches(m, q); });
+      if (!people.length) {
+        rowsEl.appendChild(api.el('<div class="ppl-empty">No one matches “' + api.esc(query.trim()) + '”</div>'));
+        return;
+      }
+      people.forEach(function (m) {
         var on = selected.indexOf(m.id) !== -1;
         var row = api.el('<button type="button" class="ppl-row' + (on ? " on" : "") + '">' +
           '<span class="ppl-check">' + (on ? "✓" : "") + "</span>" +
           api.avatar(m, "sm") + api.esc(m.name) + "</button>");
-        row.onclick = function () {
-          var i = selected.indexOf(m.id);
-          if (i === -1) selected.push(m.id); else selected.splice(i, 1);
-          renderTokens(); renderMenu();
-          if (opts.onChange) opts.onChange(selected);
-        };
-        menu.appendChild(row);
+        row.onclick = function () { toggleMember(m); };
+        rowsEl.appendChild(row);
       });
     }
+
+    search.addEventListener("input", function () { query = search.value; renderRows(); });
+    search.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      var q = query.trim().toLowerCase();
+      var people = pickable.filter(function (m) { return matches(m, q); });
+      if (people.length) { toggleMember(people[0]); query = ""; search.value = ""; renderRows(); search.focus(); }
+    });
 
     addBtn.onclick = function (e) {
       e.stopPropagation();
       var opening = menu.classList.contains("hidden");
-      if (opening) renderMenu();
+      if (opening) { query = ""; search.value = ""; renderRows(); }
       menu.classList.toggle("hidden", !opening);
+      if (opening) setTimeout(function () { search.focus(); }, 20);
     };
     /* clicks inside the menu re-render its rows, so they must not
        bubble to the document listener that closes it */

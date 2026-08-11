@@ -1,7 +1,8 @@
 /* ================================================================
    YELLOW BELLY HQ — Team page + profile editing
-   Everyone edits their own photo / pronouns / title / email.
-   Admins additionally set login emails and roles for anyone.
+   Everyone edits their own photo / pronouns / title / email / phone.
+   Admins can also set login emails for anyone. Access level, departments
+   and city / studio are managed only in Settings.
    ================================================================ */
 
 var Team = (function () {
@@ -108,34 +109,12 @@ var Team = (function () {
       '  <div class="field"><label>Phone number</label>' +
       '    <input type="tel" id="pf-phone" placeholder="' + UI.esc(UI.phoneExample(m.city)) + '">' +
       '    <div class="hint">Shown on your team card.</div></div>' +
-      "</div>" +
-      (isAdmin
-        ? '<div class="field-row">' +
-          '  <div class="field"><label>Access level</label><select id="pf-role">' +
-            ROLES.map(function (r) { return '<option value="' + r.id + '">' + UI.esc(r.label) + "</option>"; }).join("") +
-          "</select></div>" +
-          '  <div class="field"><label>Departments</label><div id="pf-dept"></div></div>' +
-          "</div>" +
-          '<div class="field"><label>City / studio</label><select id="pf-city">' +
-            Store.cities().map(function (c) { return '<option value="' + c.id + '">' + UI.esc(c.label) + "</option>"; }).join("") +
-          "</select><div class=\"hint\">Sets this person's timezone across the HQ. Add more cities in Settings.</div></div>"
-        : "");
+      "</div>";
 
     sh.body.querySelector("#pf-pronouns").value = m.pronouns || "";
     sh.body.querySelector("#pf-title").value = m.title || "";
     sh.body.querySelector("#pf-email").value = m.email || "";
     sh.body.querySelector("#pf-phone").value = m.phone || "";
-    var deptSelected = (m.depts || []).slice();
-    if (isAdmin) {
-      sh.body.querySelector("#pf-role").value = m.role;
-      sh.body.querySelector("#pf-dept").appendChild(UI.tagSelect(Store.departments(), deptSelected, { placeholder: "Select departments…" }));
-      var citySel = sh.body.querySelector("#pf-city");
-      citySel.value = m.city || DEFAULT_CITY;
-      // keep the phone placeholder in step with the chosen city
-      citySel.addEventListener("change", function () {
-        sh.body.querySelector("#pf-phone").placeholder = UI.phoneExample(citySel.value);
-      });
-    }
 
     var photoInput = sh.body.querySelector("#pf-photo");
     sh.body.querySelector("#pf-photo-btn").onclick = function () { photoInput.click(); };
@@ -170,11 +149,6 @@ var Team = (function () {
         phone: sh.body.querySelector("#pf-phone").value.trim()
       };
       if (photo) patch.photo = photo;
-      if (isAdmin) {
-        patch.role = sh.body.querySelector("#pf-role").value;
-        patch.depts = deptSelected.slice();
-        patch.city = sh.body.querySelector("#pf-city").value;
-      }
       Store.updateMember(m.id, patch).then(function () {
         UI.closeModal();
         UI.toast("Profile saved");

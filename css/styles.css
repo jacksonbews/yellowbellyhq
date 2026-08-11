@@ -749,6 +749,15 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
   width: 300px; max-height: 320px; overflow-y: auto;
   animation: rise .4s var(--ease);
 }
+.ppl-menu input.ppl-search {
+  position: sticky; top: 0; z-index: 2;
+  width: 100%; box-sizing: border-box;
+  border: 0; border-bottom: 1px solid var(--hair);
+  padding: 10px 16px; font-size: 14px; background: var(--bg); outline: 0;
+}
+.ppl-search::placeholder { color: var(--grey); }
+.ppl-search:focus { border-bottom-color: var(--fg); }
+.ppl-empty { padding: 14px; font-size: 13px; color: var(--grey); }
 .ppl-menu-label {
   font-size: 9px; letter-spacing: .16em; text-transform: uppercase;
   color: var(--grey); padding: 12px 14px 6px;
@@ -947,6 +956,7 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
 /* the checklist label sits inside a .field in the editor — stop it
    inheriting the uppercase/tiny field-label styling */
 .field .subtask-check {
+  display: flex; align-items: center; gap: 12px;
   text-transform: none; letter-spacing: normal; font-weight: 400;
   color: var(--fg); font-size: 14px; margin: 0;
 }
@@ -1123,11 +1133,26 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
 .st-section { margin-bottom: 26px; }
 .st-row {
   display: grid;
-  grid-template-columns: 32px minmax(160px, 1.4fr) 80px minmax(150px, 1.6fr) 118px 168px 40px;
+  grid-template-columns: 32px minmax(150px, 1.3fr) 80px minmax(140px, 1.5fr) 112px 156px 78px 40px;
   align-items: center; gap: 14px 16px;
   padding: 13px 0;
   border-bottom: 1px solid var(--hair-soft);
 }
+.st-head { display: flex; }
+.st-head-btn {
+  font-size: 11px; font-weight: 500; padding: 4px 9px;
+  border: 1px solid var(--hair); border-radius: 999px;
+  background: transparent; color: var(--grey); cursor: pointer; white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.st-head-btn:hover { border-color: var(--fg); color: var(--fg); }
+.st-head-btn.on { background: #fbef9a; border-color: #e6d400; color: #3a3400; }
+.st-head-tag {
+  font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 999px;
+  background: #fbef9a; color: #3a3400; white-space: nowrap;
+}
+.section-note { font-size: 12px; color: var(--grey); margin: -4px 0 14px; line-height: 1.55; max-width: 620px; }
+.section-note .st-head-tag { padding: 1px 7px; }
 .st-main { min-width: 0; }
 .st-profile { display: flex; }
 .st-profile .btn { padding: 5px 8px; }
@@ -1221,6 +1246,22 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
 .bk-daily-card, .bk-pie-card { margin-bottom: 14px; }
 .bk-pie-sub { font-size: 12px; color: var(--grey); margin: -4px 0 6px; }
 .bk-section-head { font-size: 22px; font-weight: 700; margin: 26px 0 12px; letter-spacing: -0.01em; }
+
+/* ---------- Decision Log ---------- */
+.dl-table { min-width: 1120px; }
+.dl-table td { vertical-align: top; }
+.dl-date { white-space: nowrap; color: var(--grey); font-size: 12px; }
+.dl-decision { font-weight: 500; max-width: 230px; }
+.dl-clip { max-width: 200px; }
+.dl-clip-sm { max-width: 120px; }
+.dl-decision, .dl-clip, .dl-clip-sm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-dash { color: var(--hair); }
+.dl-actions { text-align: right; }
+.chip.dl-status { font-weight: 500; }
+.chip.dl-status.dl-done { background: #e7f6e7; color: #1f6b1f; }
+.chip.dl-status.dl-progress { background: #fbef9a; color: #6b5100; }
+.chip.dl-status.dl-hold { background: #ececec; color: #666; }
+.chip.dl-cat { background: var(--cream); color: var(--fg); }
 .chart-svg { width: 100%; height: auto; display: block; }
 .chart-svg .ax { font-size: 10px; fill: var(--grey); font-family: var(--font); }
 .chart-svg .bk-loc { font-size: 11px; fill: var(--fg); }

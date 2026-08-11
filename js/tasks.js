@@ -10,7 +10,9 @@ var Tasks = (function () {
 
   /* ---------- view preference (per person, per browser) ---------- */
   function viewPref() {
-    return localStorage.getItem("ybhq_view_" + Store.me().id) || "board";
+    var v = localStorage.getItem("ybhq_view_" + Store.me().id) || "board";
+    // the Week view has been removed — anyone left on it falls back to Board
+    return v === "week" ? "board" : v;
   }
   function setViewPref(v) {
     localStorage.setItem("ybhq_view_" + Store.me().id, v);
@@ -19,6 +21,19 @@ var Tasks = (function () {
   /* ---------- filtering ---------- */
   function visibleTasks() {
     var tasks = Store.tasks();
+    // Team members only see their own tasks (assigned to them, or created by
+    // them) — UNLESS they're a Department Head, who also sees the tasks of
+    // anyone sharing their department. Managers/Ownership keep the wider view.
+    if (Store.assignScope() === "self") {
+      var meM = Store.me(), myId = meM.id, head = Store.isDeptHead();
+      tasks = tasks.filter(function (t) {
+        if (t.assigneeIds.indexOf(myId) !== -1 || t.assignedBy === myId) return true;
+        if (head) return t.assigneeIds.some(function (id) {
+          var mm = Store.member(id); return mm && Store.sharesDept(mm, meM);
+        });
+        return false;
+      });
+    }
     if (filterAssignee === "me") {
       tasks = tasks.filter(function (t) { return t.assigneeIds.indexOf(Store.me().id) !== -1; });
     } else if (filterAssignee !== "all") {
@@ -86,6 +101,9 @@ var Tasks = (function () {
   /* ================= PAGE ================= */
   api.render = function (main) {
     var me = Store.me();
+    // only Ownership / Ownership & Development / Manager Admin can filter by
+    // assignee — for everyone else the filter is hidden and not applied
+    if (!Store.canFilterAssignee()) filterAssignee = "all";
     var tasks = visibleTasks();
     var view = viewPref();
 
@@ -109,7 +127,6 @@ var Tasks = (function () {
       '<div class="seg">' +
       '<button data-v="board"' + (view === "board" ? ' class="active"' : "") + ">Board</button>" +
       '<button data-v="table"' + (view === "table" ? ' class="active"' : "") + ">Table</button>" +
-      '<button data-v="week"' + (view === "week" ? ' class="active"' : "") + ">Week</button>" +
       '<button data-v="month"' + (view === "month" ? ' class="active"' : "") + ">Month</button>" +
       "</div>"
     );
@@ -118,14 +135,22 @@ var Tasks = (function () {
     });
     bar.appendChild(seg);
 
-    var selA = UI.el('<select class="filter-select" title="Filter by assignee"></select>');
-    selA.innerHTML = '<option value="all">Assignee: everyone</option><option value="me">Assignee: me</option>' +
-      Store.team().map(function (m) {
-        return '<option value="' + m.id + '">' + UI.esc(m.name) + "</option>";
-      }).join("");
-    selA.value = filterAssignee;
-    selA.onchange = function () { filterAssignee = selA.value; api.render(main); };
-    bar.appendChild(selA);
+    if (Store.canFilterAssignee()) {
+      // a Department Head (who isn't otherwise a manager/owner) only filters
+      // within their own department; managers/owners filter across everyone
+      var choices = Store.team();
+      if (Store.isDeptHead() && Store.assignScope() === "self") {
+        choices = choices.filter(function (mm) { return mm.id === me.id || Store.sharesDept(mm, me); });
+      }
+      var selA = UI.el('<select class="filter-select" title="Filter by assignee"></select>');
+      selA.innerHTML = '<option value="all">Assignee: everyone</option><option value="me">Assignee: me</option>' +
+        choices.map(function (m) {
+          return '<option value="' + m.id + '">' + UI.esc(m.name) + "</option>";
+        }).join("");
+      selA.value = filterAssignee;
+      selA.onchange = function () { filterAssignee = selA.value; api.render(main); };
+      bar.appendChild(selA);
+    }
 
     var selP = UI.el('<select class="filter-select" title="Filter by priority"></select>');
     selP.innerHTML = '<option value="all">Priority: all</option><option value="high">High</option><option value="med">Med</option><option value="low">Low</option>';
@@ -143,7 +168,6 @@ var Tasks = (function () {
 
     if (view === "board") renderBoard(main, tasks);
     else if (view === "table") renderTable(main, tasks);
-    else if (view === "week") renderWeek(main, tasks);
     else if (view === "month") renderMonth(main, tasks);
   };
 
@@ -162,6 +186,8 @@ var Tasks = (function () {
     return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
   }
   function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
+  /* an ISO date six months from today — the standard due date for KPIs */
+  function sixMonthsOut() { var d = new Date(); d.setMonth(d.getMonth() + 6); return toISO(d); }
   function startOfWeek(d) { var x = new Date(d); var wd = (x.getDay() + 6) % 7; x.setDate(x.getDate() - wd); x.setHours(0, 0, 0, 0); return x; }
 
   function byDueDate(tasks) {
@@ -199,46 +225,6 @@ var Tasks = (function () {
     return nav;
   }
 
-  /* ================= WEEK VIEW ================= */
-  function renderWeek(main, tasks) {
-    var start = startOfWeek(ensureAnchor());
-    var end = addDays(start, 6);
-    var map = byDueDate(tasks);
-    var todayISO = UI.todayStr();
-    var canCreate = true;
-
-    var label = start.getMonth() === end.getMonth()
-      ? start.getDate() + " – " + end.getDate() + " " + MONTHS_SHORT[end.getMonth()] + " " + end.getFullYear()
-      : start.getDate() + " " + MONTHS_SHORT[start.getMonth()] + " – " + end.getDate() + " " + MONTHS_SHORT[end.getMonth()] + " " + end.getFullYear();
-
-    main.appendChild(calNav(label,
-      function (dir) { calAnchor = addDays(startOfWeek(calAnchor), dir * 7); api.render(main); },
-      function () { calAnchor = todayLocal(); api.render(main); }));
-
-    var grid = UI.el('<div class="week-grid"></div>');
-    for (var i = 0; i < 7; i++) {
-      var day = addDays(start, i);
-      var iso = toISO(day);
-      var list = (map[iso] || []).slice().sort(sortForCal);
-      var col = UI.el(
-        '<div class="week-col' + (iso === todayISO ? " today" : "") + '">' +
-        '<div class="week-col-head"><span class="week-dow">' + DOW[i] + "</span>" +
-        '<span class="week-dom">' + day.getDate() + "</span></div>" +
-        '<div class="week-col-body"></div></div>'
-      );
-      var body = col.querySelector(".week-col-body");
-      list.forEach(function (t) { body.appendChild(calPill(t)); });
-      if (canCreate) {
-        (function (isoDay) {
-          body.addEventListener("click", function () { api.openEditor(null, isoDay); });
-        })(iso);
-      }
-      grid.appendChild(col);
-    }
-    main.appendChild(grid);
-    appendUnscheduled(main, tasks);
-  }
-
   /* ================= MONTH VIEW ================= */
   function renderMonth(main, tasks) {
     var anchor = ensureAnchor();
@@ -273,12 +259,10 @@ var Tasks = (function () {
       list.slice(0, 3).forEach(function (t) { body.appendChild(calPill(t)); });
       if (list.length > 3) {
         var more = UI.el('<button class="cal-more">+ ' + (list.length - 3) + " more</button>");
-        (function (isoDay) {
-          more.onclick = function (e) {
-            e.stopPropagation();
-            setViewPref("week"); calAnchor = new Date(isoDay + "T00:00:00"); api.render(main);
-          };
-        })(iso);
+        more.onclick = function (e) {
+          e.stopPropagation();
+          setViewPref("table"); api.render(main);
+        };
         body.appendChild(more);
       }
       (function (isoDay) {
@@ -441,9 +425,6 @@ var Tasks = (function () {
       "</div>" +
       '<div class="field-row">' +
       '  <div class="field"><label>Status</label><div id="tk-status"></div></div>' +
-      '  <div class="field"><label>Tag</label>' +
-      '    <button type="button" class="kpi-toggle" id="tk-kpi"><span class="kpi-dot"></span>KPI</button>' +
-      '    <div class="hint">Mark this task as a company KPI.</div></div>' +
       "</div>" +
       '<div class="field"><label>Assign to</label><div id="tk-assign"></div>' +
       (Store.assignScope() === "self" ? '<div class="hint">Your access level can only assign tasks to yourself — managers assign the rest.</div>' : "") +
@@ -455,9 +436,6 @@ var Tasks = (function () {
     sh.body.querySelector("#tk-due").value = t ? t.dueDate : (prefillDate || "");
     sh.body.querySelector("#tk-pri").appendChild(UI.segRadios(PRIORITIES, priority, function (v) { priority = v; }));
     sh.body.querySelector("#tk-status").appendChild(UI.segRadios(STATUS_OPTIONS, status, function (v) { status = v; }));
-    var kpiBtn = sh.body.querySelector("#tk-kpi");
-    kpiBtn.classList.toggle("on", isKpi);
-    kpiBtn.onclick = function () { isKpi = !isKpi; kpiBtn.classList.toggle("on", isKpi); };
 
     /* recurrence: frequency select + weekly day multi-select */
     var recurSel = sh.body.querySelector("#tk-recur");
@@ -590,6 +568,8 @@ var Tasks = (function () {
         '<td><button type="button" class="kpi-x" aria-label="Remove row">×</button></td>' +
         "</tr>"
       );
+      // KPIs default to a due date six months out
+      tr.querySelector(".kpi-date").value = sixMonthsOut();
       tr.querySelectorAll(".kpi-pri span").forEach(function (sp) {
         sp.onclick = function () {
           tr.querySelectorAll(".kpi-pri span").forEach(function (x) { x.className = ""; });
@@ -634,7 +614,7 @@ var Tasks = (function () {
 
       tr.querySelector(".kpi-x").onclick = function () {
         if (tbody.children.length > 1) tr.remove();
-        else { tr.querySelector(".kpi-title-input").value = ""; tr.querySelector(".kpi-date").value = ""; subtasks.length = 0; renderSub(); updateToggle(); subPanel.classList.add("hidden"); }
+        else { tr.querySelector(".kpi-title-input").value = ""; tr.querySelector(".kpi-date").value = sixMonthsOut(); subtasks.length = 0; renderSub(); updateToggle(); subPanel.classList.add("hidden"); }
       };
       tbody.appendChild(tr);
       return tr;
@@ -673,7 +653,7 @@ var Tasks = (function () {
       Array.prototype.slice.call(tbody.children).forEach(function (tr) {
         var title = tr.querySelector(".kpi-title-input").value.trim();
         if (!title) return;
-        var due = tr.querySelector(".kpi-date").value;
+        var due = tr.querySelector(".kpi-date").value || sixMonthsOut();
         var onPri = tr.querySelector('.kpi-pri span[class^="on-"]');
         var priority = onPri ? onPri.dataset.p : "med";
         var assignee = tr.querySelector(".kpi-assign").value;

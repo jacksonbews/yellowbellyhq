@@ -9,7 +9,7 @@
 var Store = (function () {
 
   var MODE = FIREBASE_CONFIG ? "firebase" : "demo";
-  var state = { team: [], tasks: [], notifications: [], docSections: [], docs: [], cities: [], departments: [], studios: [], studioTasks: [], studioArchive: [], suppliers: [], tickets: [] };
+  var state = { team: [], tasks: [], notifications: [], docSections: [], docs: [], cities: [], departments: [], studios: [], studioTasks: [], studioArchive: [], suppliers: [], tickets: [], decisions: [] };
   var me = null;               // current member object (effective — may be a preview)
   var realMe = null;           // the genuine logged-in account (never a preview)
   var previewId = null;        // set when an Ownership user previews as a teammate
@@ -286,6 +286,14 @@ var Store = (function () {
       state.suppliers = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       emitChange();
     }));
+    // Decision Log is read-restricted, so only subscribe when the REAL account
+    // (not a preview) is allowed to read it — avoids permission-denied errors.
+    if (realMe && (realMe.role === "owner-dev" || realMe.role === "manager-admin")) {
+      unsubs.push(db.collection("decisions").onSnapshot(function (snap) {
+        state.decisions = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+        emitChange();
+      }));
+    }
     unsubs.push(db.collection("tickets").onSnapshot(function (snap) {
       state.tickets = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       emitChange();
@@ -462,6 +470,21 @@ var Store = (function () {
     return "self";
   };
   api.canAssignOthers = function (m) { return api.assignScope(m) !== "self"; };
+  /* a Department Head is anyone flagged in Settings — they can see the tasks of
+     everyone who shares one of their departments */
+  api.isDeptHead = function (m) { m = m || me; return !!(m && m.deptHead); };
+  /* who may filter the Tasks list by assignee: the two Ownership tiers, Manager
+     Admin, and Department Heads (deliberately NOT plain Studio Admin or Team) */
+  api.canFilterAssignee = function (m) {
+    var mem = m || me;
+    var r = roleOf(mem);
+    return r === "owner-dev" || r === "owner" || r === "manager-admin" || api.isDeptHead(mem);
+  };
+  /* Decision Log — restricted to Ownership & Developer and Manager Admin */
+  api.canViewDecisionLog = function (m) {
+    var r = roleOf(m);
+    return r === "owner-dev" || r === "manager-admin";
+  };
   api.assignableMembers = function (m) {
     m = m || me;
     var scope = api.assignScope(m);
@@ -907,6 +930,49 @@ var Store = (function () {
       demoSave(); emitChange(); return Promise.resolve();
     }
     return db.collection("suppliers").doc(id).delete();
+  };
+
+  /* ---------------- Decision Log ---------------- */
+  api.decisions = function () {
+    return state.decisions.slice().sort(function (a, b) {
+      // most recent decision date first; undated entries sink to the bottom
+      var ad = a.date || "0000", bd = b.date || "0000";
+      return ad < bd ? 1 : ad > bd ? -1 : (b.createdAt || 0) - (a.createdAt || 0);
+    });
+  };
+  api.decisionCategories = function () {
+    var set = {};
+    state.decisions.forEach(function (d) { if (d.category) set[d.category] = true; });
+    return Object.keys(set).sort();
+  };
+  function decisionShape(data) {
+    return {
+      date: data.date || "", status: data.status || "In Progress", decision: data.decision || "",
+      category: data.category || "", location: data.location || "", owner: data.owner || "",
+      consulted: data.consulted || "", rationale: data.rationale || "", action: data.action || "",
+      dueDate: data.dueDate || ""
+    };
+  }
+  api.addDecision = function (data) {
+    var d = decisionShape(data); d.id = uid(); d.createdAt = now();
+    if (MODE === "demo") { state.decisions.push(d); demoSave(); emitChange(); return Promise.resolve(d.id); }
+    var copy = Object.assign({}, d); delete copy.id;
+    return db.collection("decisions").doc(d.id).set(copy).then(function () { return d.id; });
+  };
+  api.updateDecision = function (id, patch) {
+    if (MODE === "demo") {
+      var d = state.decisions.find(function (x) { return x.id === id; });
+      if (d) Object.assign(d, patch);
+      demoSave(); emitChange(); return Promise.resolve();
+    }
+    return db.collection("decisions").doc(id).update(patch);
+  };
+  api.deleteDecision = function (id) {
+    if (MODE === "demo") {
+      state.decisions = state.decisions.filter(function (x) { return x.id !== id; });
+      demoSave(); emitChange(); return Promise.resolve();
+    }
+    return db.collection("decisions").doc(id).delete();
   };
 
   /* ---- departments (managed list of names; Ownership & Developer) ---- */

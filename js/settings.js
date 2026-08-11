@@ -35,6 +35,7 @@ var Settings = (function () {
       '    <span class="section-name">Team Management <span class="section-count">( ' + team.length + " )</span></span>" +
       '    <span class="section-actions"></span>' +
       "  </div>" +
+      (canEdit ? '  <div class="section-note">Tap <span class="st-head-tag">★ Head</span> to make someone a department head — they can see everyone in their department’s tasks via the assignee filter.</div>' : "") +
       '  <div class="st-rows"></div>' +
       "</div>"
     );
@@ -256,6 +257,7 @@ var Settings = (function () {
       '  <select class="st-select st-role" title="Access level" ' + (canEdit ? "" : "disabled") + ">" +
       ROLES.map(function (r) { return '<option value="' + r.id + '">' + UI.esc(r.label) + "</option>"; }).join("") +
       "  </select>" +
+      '  <span class="st-head"></span>' +
       '  <span class="st-actions"></span>' +
       "</div>"
     );
@@ -292,6 +294,21 @@ var Settings = (function () {
       }
       Store.updateMember(m.id, { role: roleSel.value }).then(function () { UI.toast("Access updated"); });
     };
+
+    var headMount = row.querySelector(".st-head");
+    if (canEdit) {
+      var headBtn = UI.el('<button class="st-head-btn' + (m.deptHead ? " on" : "") +
+        '" title="Department head — can see the tasks of everyone in their department">' +
+        (m.deptHead ? "★" : "☆") + " Head</button>");
+      headBtn.onclick = function () {
+        Store.updateMember(m.id, { deptHead: !m.deptHead }).then(function () {
+          UI.toast(m.deptHead ? m.name + " is no longer a department head" : m.name + " is now a department head");
+        });
+      };
+      headMount.appendChild(headBtn);
+    } else if (m.deptHead) {
+      headMount.innerHTML = '<span class="st-head-tag">★ Head</span>';
+    }
 
     if (canEdit) {
       var edit = UI.el('<button class="btn btn-sm btn-ghost">Profile</button>');

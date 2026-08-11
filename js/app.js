@@ -5,7 +5,7 @@
 var App = (function () {
   var api = {};
   var page = "tasks";
-  var PAGES = { tasks: Tasks, docs: Docs, team: Team, studio: Studio, reports: Reports, suppliers: Suppliers, tickets: Tickets, settings: Settings, bookings: Bookings };
+  var PAGES = { tasks: Tasks, docs: Docs, team: Team, studio: Studio, reports: Reports, suppliers: Suppliers, tickets: Tickets, settings: Settings, bookings: Bookings, decisions: Decisions };
   api.current = function () { return page; };
 
   function show(id) {
@@ -26,6 +26,7 @@ var App = (function () {
     if ((p === "settings" || p === "bookings" || p === "reports" || p === "suppliers") && !Store.canViewSettings()) p = "tasks";
     if (p === "studio" && !Store.canAccessStudios()) p = "tasks";
     if (p === "tickets" && !Store.isTicketAdmin()) p = "tasks";
+    if (p === "decisions" && !Store.canViewDecisionLog()) p = "tasks";
     page = p;
     document.querySelectorAll(".nav-link").forEach(function (b) {
       b.classList.toggle("active", b.dataset.page === p);
@@ -43,6 +44,7 @@ var App = (function () {
     document.getElementById("nav-studio").classList.toggle("hidden", !Store.canAccessStudios());
     document.getElementById("nav-reports").classList.toggle("hidden", !Store.canViewSettings());
     document.getElementById("nav-suppliers").classList.toggle("hidden", !Store.canViewSettings());
+    document.getElementById("nav-decisions").classList.toggle("hidden", !Store.canViewDecisionLog());
     var nt = document.getElementById("nav-tickets");
     nt.classList.toggle("hidden", !Store.isTicketAdmin());
     nt.querySelector(".nav-badge").textContent = Store.openTicketCount() || "";
@@ -118,11 +120,20 @@ var App = (function () {
     setInterval(function () { if (Store.me()) { Store.promoteDueToday(); Store.resetWeeklyStudioTasks(); } }, 5 * 60 * 1000);
 
     /* live re-render on any data change */
+    var pendingRender = false;
     Store.onChange(function () {
       if (!Store.me()) return;
       renderTopbar();
-      /* don't wipe the page while a modal is open (e.g. typing a comment) */
-      if (!document.querySelector(".modal-overlay")) {
+      /* don't wipe the page while a modal is open (e.g. typing a comment) —
+         but remember a change happened so we can catch up when it closes */
+      if (document.querySelector(".modal-overlay")) { pendingRender = true; return; }
+      PAGES[page].render(document.getElementById("main"));
+    });
+    /* when a modal closes, apply any data change that arrived while it was open
+       (e.g. an email you just saved now shows next to the name in Settings) */
+    document.addEventListener("ui:modalclosed", function () {
+      if (pendingRender && Store.me() && !document.querySelector(".modal-overlay")) {
+        pendingRender = false;
         PAGES[page].render(document.getElementById("main"));
       }
     });
