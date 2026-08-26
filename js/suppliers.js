@@ -68,7 +68,7 @@ var Suppliers = (function () {
   }
 
   api.render = function (main) {
-    if (!Store.canViewSettings()) { App.go("tasks"); return; }
+    if (!Store.canViewPage("suppliers")) { App.go("tasks"); return; }
     var all = Store.suppliers();
 
     main.innerHTML = "";

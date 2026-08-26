@@ -26,7 +26,7 @@ var Studio = (function () {
   };
 
   api.render = function (main) {
-    if (!Store.canAccessStudios()) { App.go("tasks"); return; }
+    if (!Store.canViewPage("studio")) { App.go("tasks"); return; }
     var cities = accessibleCities();
 
     main.innerHTML = "";

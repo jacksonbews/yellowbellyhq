@@ -204,7 +204,7 @@ var Reports = (function () {
 
   /* ---------- page ---------- */
   api.render = function (main) {
-    if (!Store.canViewSettings()) { App.go("tasks"); return; }
+    if (!Store.canViewPage("reports")) { App.go("tasks"); return; }
     main.innerHTML = "";
     main.appendChild(UI.el(
       '<div class="page-head"><div>' +

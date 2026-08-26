@@ -5,7 +5,7 @@
 var App = (function () {
   var api = {};
   var page = "tasks";
-  var PAGES = { tasks: Tasks, docs: Docs, team: Team, studio: Studio, reports: Reports, suppliers: Suppliers, tickets: Tickets, settings: Settings, bookings: Bookings, decisions: Decisions };
+  var PAGES = { tasks: Tasks, docs: Docs, team: Team, studio: Studio, reports: Reports, suppliers: Suppliers, tickets: Tickets, settings: Settings, bookings: Bookings, decisions: Decisions, outreach: Outreach };
   api.current = function () { return page; };
 
   function show(id) {
@@ -23,10 +23,7 @@ var App = (function () {
   }
 
   api.go = function (p) {
-    if ((p === "settings" || p === "bookings" || p === "reports" || p === "suppliers") && !Store.canViewSettings()) p = "tasks";
-    if (p === "studio" && !Store.canAccessStudios()) p = "tasks";
-    if (p === "tickets" && !Store.isTicketAdmin()) p = "tasks";
-    if (p === "decisions" && !Store.canViewDecisionLog()) p = "tasks";
+    if (PAGES[p] && !Store.canViewPage(p)) p = "tasks";
     page = p;
     document.querySelectorAll(".nav-link").forEach(function (b) {
       b.classList.toggle("active", b.dataset.page === p);
@@ -39,14 +36,15 @@ var App = (function () {
     var me = Store.me();
     if (!me) return;
     document.getElementById("btn-me").innerHTML = UI.avatar(me);
-    document.getElementById("nav-settings").classList.toggle("hidden", !Store.canViewSettings());
-    document.getElementById("nav-bookings").classList.toggle("hidden", !Store.canViewSettings());
-    document.getElementById("nav-studio").classList.toggle("hidden", !Store.canAccessStudios());
-    document.getElementById("nav-reports").classList.toggle("hidden", !Store.canViewSettings());
-    document.getElementById("nav-suppliers").classList.toggle("hidden", !Store.canViewSettings());
-    document.getElementById("nav-decisions").classList.toggle("hidden", !Store.canViewDecisionLog());
+    document.getElementById("nav-settings").classList.toggle("hidden", !Store.canViewPage("settings"));
+    document.getElementById("nav-bookings").classList.toggle("hidden", !Store.canViewPage("bookings"));
+    document.getElementById("nav-studio").classList.toggle("hidden", !Store.canViewPage("studio"));
+    document.getElementById("nav-reports").classList.toggle("hidden", !Store.canViewPage("reports"));
+    document.getElementById("nav-suppliers").classList.toggle("hidden", !Store.canViewPage("suppliers"));
+    document.getElementById("nav-decisions").classList.toggle("hidden", !Store.canViewPage("decisions"));
+    document.getElementById("nav-outreach").classList.toggle("hidden", !Store.canViewPage("outreach"));
     var nt = document.getElementById("nav-tickets");
-    nt.classList.toggle("hidden", !Store.isTicketAdmin());
+    nt.classList.toggle("hidden", !Store.canViewPage("tickets"));
     nt.querySelector(".nav-badge").textContent = Store.openTicketCount() || "";
     Tickets.mountBubble();
     renderSidebarClocks();

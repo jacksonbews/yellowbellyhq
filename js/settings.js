@@ -68,6 +68,9 @@ var Settings = (function () {
     });
     main.appendChild(lvlSec);
 
+    /* ============ PAGE ACCESS ============ */
+    main.appendChild(buildPageAccessSection(Store.canViewSettings()));
+
     /* ============ CITIES & TIMEZONES ============ */
     var canCities = Store.canAddRemoveMembers();
     var cities = Store.cities();
@@ -238,6 +241,74 @@ var Settings = (function () {
     });
     main.appendChild(connSec);
   };
+
+  /* ---------- Page Access matrix: which access levels can see each page ---------- */
+  function buildPageAccessSection(canEditPA) {
+    var roles = Store.ROLE_LIST;
+    var labelMap = {};
+    ROLES.forEach(function (r) { labelMap[r.id] = r.label; });
+
+    var sec = UI.el(
+      '<div class="st-section">' +
+      '  <div class="section-head"><span class="section-name">Page Access</span></div>' +
+      '  <div class="section-note pa-note">Choose which access levels can see each page in the sidebar. <b>Ownership &amp; Developer</b> always sees everything and can’t be switched off. Only Ownership can see and change this.</div>' +
+      '  <div class="pa-wrap"></div>' +
+      "</div>"
+    );
+
+    var table = document.createElement("table");
+    table.className = "pa-table";
+    var thead = document.createElement("thead");
+    var htr = document.createElement("tr");
+    htr.appendChild(UI.el('<th class="pa-page-h">Page</th>'));
+    roles.forEach(function (rid) {
+      htr.appendChild(UI.el('<th class="pa-role-h"><span>' + UI.esc(labelMap[rid] || rid) + "</span></th>"));
+    });
+    thead.appendChild(htr);
+    table.appendChild(thead);
+
+    var tbody = document.createElement("tbody");
+    Store.pageList().forEach(function (pg) {
+      var tr = document.createElement("tr");
+      var scope = pg.always ? "Everyone" : pg.ownersLocked ? "Ownership only" : "";
+      tr.appendChild(UI.el(
+        '<td class="pa-page"><span class="pa-page-name">' + UI.esc(pg.label) + "</span>" +
+        (scope ? '<span class="pa-page-scope">' + UI.esc(scope) + "</span>" : "") +
+        (pg.note ? '<span class="pa-page-note">' + UI.esc(pg.note) + "</span>" : "") +
+        "</td>"
+      ));
+      var current = Store.pageAccessRoles(pg.id);
+      roles.forEach(function (rid) {
+        var td = document.createElement("td");
+        td.className = "pa-cell";
+        var checked = false, locked = false;
+        if (rid === "owner-dev") { checked = true; locked = true; }
+        else if (pg.always) { checked = true; locked = true; }
+        else if (pg.ownersLocked) { checked = rid === "owner"; locked = true; }
+        else { checked = current.indexOf(rid) !== -1; locked = !canEditPA; }
+        var cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = checked;
+        cb.disabled = locked;
+        if (!locked) {
+          cb.onchange = function () {
+            var now = Store.pageAccessRoles(pg.id);
+            var i = now.indexOf(rid);
+            if (cb.checked && i === -1) now.push(rid);
+            if (!cb.checked && i !== -1) now.splice(i, 1);
+            Store.setPageAccessRoles(pg.id, now);
+            UI.toast(pg.label + " visibility updated");
+          };
+        }
+        td.appendChild(cb);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    sec.querySelector(".pa-wrap").appendChild(table);
+    return sec;
+  }
 
   /* one team row: avatar | name+email | title | dept | access | actions */
   function memberRow(m, canEdit, canAddRemove, me) {

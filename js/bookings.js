@@ -335,7 +335,7 @@ var Bookings = (function () {
 
   /* ---------------- page ---------------- */
   api.render = function (main) {
-    if (!Store.canViewSettings()) { App.go("tasks"); return; }
+    if (!Store.canViewPage("bookings")) { App.go("tasks"); return; }
     var canEdit = Store.canManageTeam();
     var data = currentRows();
     var rows = data.rows;

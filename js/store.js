@@ -485,6 +485,69 @@ var Store = (function () {
     var r = roleOf(m);
     return r === "owner-dev" || r === "manager-admin";
   };
+  /* Outreach — scoped to Hannah + Harriet (its two users), plus owner-dev to manage/test */
+  api.canViewOutreach = function (m) {
+    m = m || me;
+    if (!m) return false;
+    if (roleOf(m) === "owner-dev") return true;
+    return m.id === "hannah-mciver" || m.id === "harryet-belwood-howard";
+  };
+
+  /* ---------- configurable page access (managed in Settings) ---------- */
+  var PAGE_LIST = [
+    { id: "tasks", label: "Tasks", always: true },
+    { id: "outreach", label: "Outreach" },
+    { id: "bookings", label: "Bookings" },
+    { id: "studio", label: "Studio Checklist", note: "also needs studio/city access" },
+    { id: "reports", label: "Team Reports" },
+    { id: "suppliers", label: "Supplier Contacts" },
+    { id: "decisions", label: "Decision Log" },
+    { id: "docs", label: "Company Docs", always: true },
+    { id: "team", label: "Team", always: true },
+    { id: "tickets", label: "Tickets" },
+    { id: "settings", label: "Settings", ownersLocked: true }
+  ];
+  var DEFAULT_PAGE_ACCESS = {
+    outreach: ["owner-dev", "manager-admin"],
+    bookings: ["owner-dev", "owner"],
+    studio: ["owner-dev", "owner", "studio-admin", "manager-admin", "team"],
+    reports: ["owner-dev", "owner"],
+    suppliers: ["owner-dev", "owner"],
+    decisions: ["owner-dev", "manager-admin"],
+    tickets: ["owner-dev", "owner"]
+  };
+  var PAGE_ACCESS_KEY = "ybhq_page_access";
+  var _pageAccess = null;
+  function pageAccessCfg() {
+    if (!_pageAccess) {
+      var saved = null;
+      try { saved = JSON.parse(localStorage.getItem(PAGE_ACCESS_KEY)); } catch (e) {}
+      _pageAccess = Object.assign({}, DEFAULT_PAGE_ACCESS, saved || {});
+    }
+    return _pageAccess;
+  }
+  api.ROLE_LIST = ["owner-dev", "owner", "studio-admin", "manager-admin", "team"];
+  api.pageList = function () { return PAGE_LIST.slice(); };
+  api.pageAccessRoles = function (pageId) { return (pageAccessCfg()[pageId] || []).slice(); };
+  api.setPageAccessRoles = function (pageId, roles) {
+    pageAccessCfg()[pageId] = roles.slice();
+    try { localStorage.setItem(PAGE_ACCESS_KEY, JSON.stringify(_pageAccess)); } catch (e) {}
+    emitChange();
+  };
+  api.canViewPage = function (pageId, m) {
+    m = m || me; if (!m) return false;
+    var r = roleOf(m);
+    if (r === "owner-dev") return true;                 // super-admin — never locked out
+    var meta = PAGE_LIST.filter(function (p) { return p.id === pageId; })[0] || {};
+    if (meta.always) return true;                       // tasks / docs / team: everyone
+    if (meta.ownersLocked) return r === "owner";        // Settings: ownership tiers only
+    var roles = pageAccessCfg()[pageId];
+    var ok = roles ? roles.indexOf(r) !== -1 : true;
+    if (pageId === "outreach") ok = ok || m.id === "hannah-mciver" || m.id === "harryet-belwood-howard";
+    if (pageId === "tickets") ok = ok || m.id === TICKET_ADMIN_ID;
+    if (pageId === "studio") ok = ok && api.canAccessStudios(m);
+    return ok;
+  };
   api.assignableMembers = function (m) {
     m = m || me;
     var scope = api.assignScope(m);

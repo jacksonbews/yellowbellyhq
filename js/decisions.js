@@ -63,7 +63,7 @@ var Decisions = (function () {
   }
 
   api.render = function (main) {
-    if (!Store.canViewDecisionLog()) { App.go("tasks"); return; }
+    if (!Store.canViewPage("decisions")) { App.go("tasks"); return; }
     var all = Store.decisions();
 
     main.innerHTML = "";

@@ -262,7 +262,7 @@ var Tickets = (function () {
   /* ---------------- admin Tickets page ---------------- */
   var pageFilter = "open";
   api.render = function (main) {
-    if (!Store.isTicketAdmin()) { App.go("tasks"); return; }
+    if (!Store.canViewPage("tickets")) { App.go("tasks"); return; }
     var all = Store.tickets();
     var openN = all.filter(function (t) { return t.status === "open"; }).length;
     var rows = all.filter(function (t) {
