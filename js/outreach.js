@@ -100,6 +100,9 @@ var Outreach = (function () {
   var fCampaign = "all", fType = "all", fOwner = "all";
   var tab = "pipeline";
   var cSearch = "", colFilters = {}, sortKey = null, sortDir = 1;
+  var tsLib = "sequences", selSeq = null, selTpl = null;   // Templates & sequences: active library + selection
+  var SVG_SEND = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l16 9-16 9V3z"/></svg>';
+  var SVG_PENCIL = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
 
   function pipeContacts() {
     return DATA.contacts.filter(function (c) {
@@ -153,15 +156,15 @@ var Outreach = (function () {
       '<p class="ot-help-lede">Outreach keeps everyone you’re contacting — drama schools, casting directors and agents — in one place, from first email to booked talk. It replaces the spreadsheet: no more lost dates, TRUE/FALSE ticks or notes you can’t find.</p>' +
       '<h4 class="ot-help-h">The four tabs, in the order you’ll use them</h4>' +
       '<ol class="ot-help-steps">' +
-      '<li><b>Templates &amp; sequences</b> <span class="ot-help-tag">start here</span><br>Write your email and its follow-ups once. A <i>sequence</i> is your first email plus automatic nudges (say, after 3 days, then 7). You reuse these every round.</li>' +
-      '<li><b>Contacts</b><br>Everyone you’re contacting — one row per person or email. Add people with <b>+ Add contact</b>, or bring in a whole spreadsheet with <b>Import CSV</b> (it even splits a cell holding several emails into separate people). Click any column heading to filter or sort.</li>' +
-      '<li><b>Pipeline</b><br>The heart of it. Each contact is a card that moves left → right through the stages. <b>Drag a card</b> to move it along. Cards that have gone quiet get a ⚠ flag so you can chase them, and the <b>Scheduling</b> column has extra buttons for agreeing a date with Liv.</li>' +
+      '<li><b>Templates &amp; sequences</b> <span class="ot-help-tag">start here</span><br>The <b>Get started</b> panel at the top asks what you want to do — <b>Run a sequence</b> (send a set of emails to a batch) or <b>Write or edit a template</b>. Underneath, a <b>Sequences / Templates</b> toggle flips between your two libraries: click an item on the left and its full breakdown opens on the right. A <i>template</i> is one reusable email; a <i>sequence</i> is a first email plus automatic follow-up nudges (say, after 3 days, then 7).</li>' +
+      '<li><b>Contacts</b><br>Everyone you’re contacting — one row per person or email. Add people with <b>+ Add contact</b>, or bring in a whole spreadsheet with <b>Import CSV</b> (it even splits a cell holding several emails into separate people). Click any column heading to filter or sort, tick people and <b>Export</b> them to a CSV.</li>' +
+      '<li><b>Pipeline</b><br>The heart of it. Each contact is a card that moves left → right through the stages, starting at <b>Contacted</b> (people you haven’t emailed yet live in Contacts, not here). <b>Drag a card</b> to move it along. Cards that have gone quiet get a ⚠ flag so you can chase them, and the <b>Scheduling</b> column has extra buttons for agreeing a date with Liv.</li>' +
       '<li><b>Overview</b><br>The headline numbers for you and Harriet: how many contacted, response rate, and talks booked and delivered.</li>' +
       '</ol>' +
       '<h4 class="ot-help-h">Running a round of outreach</h4>' +
       '<ol class="ot-help-steps ot-help-flow">' +
       '<li>Add or import your contacts in <b>Contacts</b> — they start in <b>To contact</b>.</li>' +
-      '<li>Go to <b>Templates &amp; sequences → Start a send</b>: pick a sequence, choose who it goes to, preview each email, and confirm. That moves them to <b>Contacted</b>.</li>' +
+      '<li>In <b>Templates &amp; sequences</b>, press <b>Run a sequence</b> (or open a sequence and hit <b>Run this sequence</b>): pick who it goes to, preview each email, and confirm. That moves them to <b>Contacted</b> in the Pipeline.</li>' +
       '<li>As people reply, drag their cards along the <b>Pipeline</b> until a talk is Booked and Delivered.</li>' +
       '</ol>' +
       '<div class="ot-help-note">✉︎ Emails send from <b>your own Yellowbelly Gmail</b>, and replies come back to <b>Gmail</b> as normal. This tool <b>tracks</b> the outreach — it isn’t an inbox, so there’s no reply screen here.</div>' +
@@ -500,37 +503,117 @@ var Outreach = (function () {
   function mergeFields(text, c) { return String(text).replace(/\{\{\s*name\s*\}\}/g, c.name || "there").replace(/\{\{\s*organisation\s*\}\}/g, c.org).replace(/\{\{\s*jobTitle\s*\}\}/g, c.jobTitle || "the team"); }
 
   function renderTemplates(body, main) {
-    var intro = UI.el('<div class="ot-tpl-intro"><div><div class="ot-tpl-h">Set up your outreach here</div><div class="ot-tpl-sub">Write a template, build a follow-up sequence, then send it to a batch of contacts. New contacts you add or import start in <b>To contact</b> — running a sequence moves them to <b>Contacted</b>.</div></div><button class="btn btn-ot">▶ Start a send</button></div>');
-    intro.querySelector("button").onclick = function () { openSend(main); };
-    body.appendChild(intro);
+    if (!selSeq || !sequence(selSeq)) selSeq = (DATA.sequences[0] || {}).id;
+    if (!selTpl || !template(selTpl)) selTpl = (DATA.templates[0] || {}).id;
+
+    /* ---- Get started prompt ---- */
+    var gs = UI.el(
+      '<div class="ot-getstarted">' +
+      '<div class="ot-gs-eyebrow">Get started</div>' +
+      '<div class="ot-gs-h">What do you want to do?</div>' +
+      '<div class="ot-gs-tiles">' +
+      '<button class="ot-gs-tile ot-gs-primary" id="gs-seq"><span class="ot-gs-ic">' + SVG_SEND + '</span><span class="ot-gs-tx"><span class="ot-gs-t">Run a sequence</span><span class="ot-gs-s">Send a set of emails to a batch of contacts</span></span></button>' +
+      '<button class="ot-gs-tile" id="gs-tpl"><span class="ot-gs-ic ot-gs-ic-soft">' + SVG_PENCIL + '</span><span class="ot-gs-tx"><span class="ot-gs-t">Write or edit a template</span><span class="ot-gs-s">A single reusable email</span></span></button>' +
+      '</div></div>'
+    );
+    gs.querySelector("#gs-seq").onclick = function () { openSend(main); };
+    gs.querySelector("#gs-tpl").onclick = function () { tsLib = "templates"; api.render(main); };
+    body.appendChild(gs);
+
     body.appendChild(UI.el('<div class="ot-gmail-note">✉︎ Emails go out from <b>your Yellowbelly Gmail</b>, and replies come back to <b>Gmail</b> as normal. This tool tracks the outreach — it isn’t an inbox, so there’s no reply screen here.</div>'));
 
-    var tsec = UI.el('<div class="ot-sec2"><div class="ot-sec2-head"><h3>Email templates</h3></div><div class="ot-tpl-groups"></div></div>');
-    var groups = tsec.querySelector(".ot-tpl-groups");
+    /* ---- library toggle ---- */
+    var bar = UI.el('<div class="ot-libbar"><div class="ot-seg2"></div><button class="ot-lib-new"></button></div>');
+    var seg = bar.querySelector(".ot-seg2");
+    [["sequences", "Sequences"], ["templates", "Templates"]].forEach(function (p) {
+      var b = UI.el('<button class="ot-seg2-btn' + (tsLib === p[0] ? " on" : "") + '">' + p[1] + '</button>');
+      b.onclick = function () { tsLib = p[0]; api.render(main); };
+      seg.appendChild(b);
+    });
+    var newBtn = bar.querySelector(".ot-lib-new");
+    newBtn.innerHTML = '<span class="ot-lib-plus">+</span> ' + (tsLib === "sequences" ? "New sequence" : "New template");
+    newBtn.onclick = function () { if (tsLib === "sequences") openNewSequence(main); else openNewTemplate(main); };
+    body.appendChild(bar);
+
+    /* ---- master + detail ---- */
+    if (tsLib === "sequences") renderSeqLib(body, main);
+    else renderTplLib(body, main);
+  }
+
+  function renderSeqLib(body, main) {
+    var wrap = UI.el('<div class="ot-md"><div class="ot-md-list"></div><div class="ot-md-detail"></div></div>');
+    var listEl = wrap.querySelector(".ot-md-list");
+    DATA.sequences.forEach(function (s) {
+      var it = UI.el('<button class="ot-md-item' + (s.id === selSeq ? " on" : "") + '"><span class="ot-md-name">' + esc(s.name) + '</span><span class="ot-md-sub">' + esc(TYPES[s.audience]) + ' · ' + s.steps.length + ' step' + (s.steps.length > 1 ? "s" : "") + '</span></button>');
+      it.onclick = function () { selSeq = s.id; api.render(main); };
+      listEl.appendChild(it);
+    });
+    var det = wrap.querySelector(".ot-md-detail");
+    var s = sequence(selSeq);
+    if (!s) { det.appendChild(UI.el('<div class="ot-md-empty">No sequences yet — add one with <b>+ New sequence</b>.</div>')); body.appendChild(wrap); return; }
+    var head = UI.el('<div class="ot-md-head"><div><div class="ot-md-title">' + esc(s.name) + '</div><div class="ot-md-meta">' + s.steps.length + ' email' + (s.steps.length > 1 ? "s" : "") + ' · sent to ' + esc(TYPES[s.audience]) + 's in To contact</div></div><div class="ot-md-acts"></div></div>');
+    var runB = btn("Run this sequence", function () { openSend(main); }, "primary"); runB.classList.add("btn-sm");
+    var edB = btn("Edit", function () { openSequence(s.id, main); }, ""); edB.classList.add("btn-sm");
+    head.querySelector(".ot-md-acts").appendChild(edB);
+    head.querySelector(".ot-md-acts").appendChild(runB);
+    det.appendChild(head);
+    var flow = UI.el('<div class="ot-flow"></div>');
+    s.steps.forEach(function (step, i) {
+      if (i > 0) flow.appendChild(UI.el('<div class="ot-flow-wait">wait ' + (step.waitDays || 0) + ' day' + ((step.waitDays || 0) === 1 ? "" : "s") + '</div>'));
+      var isInit = step.type === "initial";
+      var tpl = isInit ? template(step.templateId) : null;
+      var sub = isInit ? 'uses <b>' + esc(tpl ? tpl.name : "—") + '</b>' : esc((step.copy || "").replace(/\n+/g, " ").slice(0, 96)) + '…';
+      var card = UI.el('<button class="ot-flow-step"><span class="ot-flow-dot">' + (i + 1) + '</span><span class="ot-flow-card"><span class="ot-flow-t">' + (isInit ? "Initial email" : "Follow-up " + i) + '</span><span class="ot-flow-sub">' + sub + '</span></span><span class="ot-flow-edit">Edit</span></button>');
+      card.onclick = function () { if (isInit && tpl) { selTpl = tpl.id; openTemplate(tpl.id, main); } else openSequence(s.id, main); };
+      flow.appendChild(card);
+    });
+    det.appendChild(flow);
+    var add = UI.el('<button class="ot-flow-add"><span class="ot-lib-plus">+</span> Add a step</button>');
+    add.onclick = function () { openSequence(s.id, main); };
+    det.appendChild(add);
+    body.appendChild(wrap);
+  }
+
+  function renderTplLib(body, main) {
+    var wrap = UI.el('<div class="ot-md"><div class="ot-md-list"></div><div class="ot-md-detail"></div></div>');
+    var listEl = wrap.querySelector(".ot-md-list");
     ["school", "casting", "agent"].forEach(function (aud) {
       var list = DATA.templates.filter(function (t) { return t.audience === aud; });
       if (!list.length) return;
-      var g = UI.el('<div class="ot-tpl-group"><div class="ot-tpl-group-h">' + esc(TYPES[aud]) + 's</div><div class="ot-tpl-cards"></div></div>');
-      var cw = g.querySelector(".ot-tpl-cards");
+      listEl.appendChild(UI.el('<div class="ot-md-group">' + esc(TYPES[aud]) + 's</div>'));
       list.forEach(function (t) {
-        var card = UI.el('<div class="ot-tpl-card"><div class="ot-tpl-name">' + esc(t.name) + '</div><div class="ot-tpl-subj">' + esc(t.subject) + '</div><div class="ot-tpl-snip">' + esc(t.body.replace(/\n+/g, " ").slice(0, 96)) + '…</div></div>');
-        card.onclick = function () { openTemplate(t.id, main); };
-        cw.appendChild(card);
+        var it = UI.el('<button class="ot-md-item' + (t.id === selTpl ? " on" : "") + '"><span class="ot-md-name">' + esc(t.name) + '</span><span class="ot-md-sub">' + esc(t.subject) + '</span></button>');
+        it.onclick = function () { selTpl = t.id; api.render(main); };
+        listEl.appendChild(it);
       });
-      groups.appendChild(g);
     });
-    body.appendChild(tsec);
+    var det = wrap.querySelector(".ot-md-detail");
+    var t = template(selTpl);
+    if (!t) { det.appendChild(UI.el('<div class="ot-md-empty">No templates yet — add one with <b>+ New template</b>.</div>')); body.appendChild(wrap); return; }
+    var usedIn = DATA.sequences.filter(function (s) { return s.steps.some(function (st) { return st.templateId === t.id; }); });
+    var head = UI.el('<div class="ot-md-head"><div class="ot-md-title-row"><span class="ot-md-title">' + esc(t.name) + '</span><span class="ot-type ot-type-' + t.audience + '">' + esc(TYPES[t.audience]) + '</span></div><div class="ot-md-acts"></div></div>');
+    var edB = btn("Edit", function () { openTemplate(t.id, main); }, "primary"); edB.classList.add("btn-sm");
+    head.querySelector(".ot-md-acts").appendChild(edB);
+    det.appendChild(head);
+    det.appendChild(UI.el(
+      '<div class="ot-tv">' +
+      '<div class="ot-tv-label">Subject</div><div class="ot-tv-subj">' + esc(t.subject) + '</div>' +
+      '<div class="ot-tv-label">Body</div><div class="ot-tv-body">' + esc(t.body).replace(/\n/g, "<br>") + '</div>' +
+      '<div class="ot-tv-merge">Merge fields: <code>{{name}}</code> <code>{{organisation}}</code> <code>{{jobTitle}}</code> — filled in per contact when you send.</div>' +
+      '<div class="ot-tv-used">' + (usedIn.length ? 'Used in <b>' + usedIn.map(function (s) { return esc(s.name); }).join(", ") + '</b>' : 'Not used in any sequence yet.') + '</div>' +
+      '</div>'
+    ));
+    body.appendChild(wrap);
+  }
 
-    var ssec = UI.el('<div class="ot-sec2"><div class="ot-sec2-head"><h3>Sequences</h3></div><div class="ot-seq-cards"></div></div>');
-    var sw = ssec.querySelector(".ot-seq-cards");
-    DATA.sequences.forEach(function (s) {
-      var card = UI.el('<div class="ot-seq-card"><div class="ot-tpl-name">' + esc(s.name) + '</div><div class="ot-seq-meta"><span class="ot-type ot-type-' + s.audience + '">' + esc(TYPES[s.audience]) + '</span> · ' + s.steps.length + ' step' + (s.steps.length > 1 ? "s" : "") + '</div><div class="ot-seq-mini"></div></div>');
-      var mini = card.querySelector(".ot-seq-mini");
-      s.steps.forEach(function (step, i) { mini.appendChild(UI.el('<span class="ot-seq-chip">' + (step.type === "initial" ? "Initial email" : "Follow-up " + i) + (step.waitDays ? " · +" + step.waitDays + "d" : "") + '</span>')); if (i < s.steps.length - 1) mini.appendChild(UI.el('<span class="ot-seq-arrow">→</span>')); });
-      card.onclick = function () { openSequence(s.id, main); };
-      sw.appendChild(card);
-    });
-    body.appendChild(ssec);
+  function openNewTemplate(main) {
+    var t = { id: "t" + Date.now(), name: "New template", audience: "school", subject: "", body: "Hi {{name}},\n\n\n\nBest,\nHannah\nYellowbelly" };
+    DATA.templates.push(t); selTpl = t.id; tsLib = "templates"; openTemplate(t.id, main);
+  }
+  function openNewSequence(main) {
+    var t0 = DATA.templates[0] || {};
+    var s = { id: "s" + Date.now(), name: "New sequence", audience: t0.audience || "school", steps: [{ type: "initial", templateId: t0.id || "", waitDays: 0 }] };
+    DATA.sequences.push(s); selSeq = s.id; tsLib = "sequences"; openSequence(s.id, main);
   }
 
   function openTemplate(id, main) {
