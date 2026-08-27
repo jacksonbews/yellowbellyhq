@@ -116,6 +116,38 @@ var Team = (function () {
     sh.body.querySelector("#pf-email").value = m.email || "";
     sh.body.querySelector("#pf-phone").value = m.phone || "";
 
+    /* Outreach email signature — only for your own profile, and only if you have Outreach access */
+    var sigImg = (m.emailSignature && m.emailSignature.image) || "";
+    var showSig = isMe && Store.canViewPage("outreach", m);
+    if (showSig) {
+      var sigSec = UI.el(
+        '<div class="pf-sig">' +
+        '  <div class="pf-sig-head"><label>Outreach email signature</label><span class="pf-sig-badge">Outreach only</span></div>' +
+        '  <textarea id="pf-sig-text" class="pf-sig-text" placeholder="Hannah McIver&#10;Yellowbelly Photo&#10;hannah@yellowbellyphoto.com"></textarea>' +
+        '  <div class="pf-sig-imgrow"><span class="pf-sig-prev" id="pf-sig-prev"></span>' +
+        '    <button type="button" class="btn btn-sm" id="pf-sig-img-btn">Add image</button>' +
+        '    <button type="button" class="btn btn-sm btn-ghost hidden" id="pf-sig-img-rm">Remove</button>' +
+        '    <input type="file" id="pf-sig-img" accept="image/*" style="display:none"></div>' +
+        '  <div class="hint">A bit of text plus an optional logo or headshot. Drop it into any email with the <b>Insert</b> menu when you write a template. Only people with Outreach access have this.</div>' +
+        '</div>'
+      );
+      sh.body.appendChild(sigSec);
+      sigSec.querySelector("#pf-sig-text").value = (m.emailSignature && m.emailSignature.text) || "";
+      var drawSigPrev = function () {
+        sigSec.querySelector("#pf-sig-prev").innerHTML = sigImg ? '<img src="' + sigImg + '" alt="signature image">' : "";
+        sigSec.querySelector("#pf-sig-img-rm").classList.toggle("hidden", !sigImg);
+        sigSec.querySelector("#pf-sig-img-btn").textContent = sigImg ? "Change image" : "Add image";
+      };
+      drawSigPrev();
+      var sigInput = sigSec.querySelector("#pf-sig-img");
+      sigSec.querySelector("#pf-sig-img-btn").onclick = function () { sigInput.click(); };
+      sigInput.onchange = function () {
+        var f = sigInput.files[0]; if (!f) return;
+        UI.readImageScaled(f, 600).then(function (dataUrl) { sigImg = dataUrl; drawSigPrev(); }).catch(function () { UI.toast("Couldn't read that image"); });
+      };
+      sigSec.querySelector("#pf-sig-img-rm").onclick = function () { sigImg = ""; drawSigPrev(); };
+    }
+
     var photoInput = sh.body.querySelector("#pf-photo");
     sh.body.querySelector("#pf-photo-btn").onclick = function () { photoInput.click(); };
     photoInput.onchange = function () {
@@ -149,6 +181,7 @@ var Team = (function () {
         phone: sh.body.querySelector("#pf-phone").value.trim()
       };
       if (photo) patch.photo = photo;
+      if (showSig) patch.emailSignature = { text: sh.body.querySelector("#pf-sig-text").value.trim(), image: sigImg };
       Store.updateMember(m.id, patch).then(function () {
         UI.closeModal();
         UI.toast("Profile saved");

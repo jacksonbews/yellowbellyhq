@@ -1408,6 +1408,24 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
 .ot-tv-used { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hair-soft); font-size: 12px; color: #757570; }
 .ot-tv-used b { color: #2c4a0a; font-weight: 600; }
 
+/* Insert menu + signature */
+.ot-body-label { display: flex; align-items: center; justify-content: space-between; }
+.ot-insert-btn { font-size: 12px; color: #2c4a0a; border: 1px solid #d8e3c4; background: #f5f8ee; border-radius: 7px; padding: 4px 10px; }
+.ot-insert-btn:hover { background: #eaf1dd; }
+.ot-insert-caret { font-size: 10px; }
+.ot-insert-menu { min-width: 220px; }
+.ot-sig-img { display: block; max-width: 240px; max-height: 90px; margin-top: 8px; }
+
+.pf-sig { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--hair-soft); }
+.pf-sig-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.pf-sig-head label { display: block; font-size: 9px; letter-spacing: .16em; text-transform: uppercase; font-weight: 500; color: var(--grey); margin: 0; }
+.pf-sig-badge { font-size: 9px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #1a2d05; background: #eaf1dd; border: 1px solid #d8e3c4; border-radius: 999px; padding: 1px 8px; }
+.pf-sig-text { width: 100%; min-height: 84px; resize: vertical; border: 1px solid var(--hair); border-radius: 8px; padding: 10px 12px; font-size: 14px; line-height: 1.5; outline: 0; background: #fff; }
+.pf-sig-text:focus { border-color: #1a2d05; }
+.pf-sig-imgrow { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.pf-sig-prev:empty { display: none; }
+.pf-sig-prev img { display: block; max-height: 46px; max-width: 160px; border: 1px solid var(--hair-soft); border-radius: 6px; }
+
 @media (max-width: 720px) {
   .ot-gs-tiles { grid-template-columns: 1fr; }
   .ot-md { grid-template-columns: 1fr; }

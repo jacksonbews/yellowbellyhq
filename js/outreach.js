@@ -169,6 +169,7 @@ var Outreach = (function () {
       '</ol>' +
       '<div class="ot-help-note">✉︎ Emails send from <b>your own Yellowbelly Gmail</b>, and replies come back to <b>Gmail</b> as normal. This tool <b>tracks</b> the outreach — it isn’t an inbox, so there’s no reply screen here.</div>' +
       '<div class="ot-help-note">📤 <b>Sending safely:</b> to avoid bounces or being marked as spam, emails go out in small batches of up to <b>' + MAX_BATCH + ' at a time</b>, and everyone is <b>BCC’d</b> so no one ever sees anyone else’s address. If you pick more than ' + MAX_BATCH + ', they’re split into batches automatically.</div>' +
+      '<div class="ot-help-note">↩︎ <b>If someone replies, the sequence stops.</b> The follow-up nudges only go to people who <i>haven’t</i> written back. The moment a contact replies you move their card to <b>Replied</b> in the Pipeline, which takes them out of the sequence — so their remaining follow-ups are cancelled and you never keep chasing someone who’s already in touch. (In the live Gmail-connected version, a reply cancels the rest on its own.)</div>' +
       "</div>";
     sh.foot.appendChild(btn("Got it", UI.closeModal, "primary"));
   }
@@ -500,7 +501,32 @@ var Outreach = (function () {
   /* ================= TEMPLATES & SEQUENCES ================= */
   function template(id) { return DATA.templates.filter(function (t) { return t.id === id; })[0]; }
   function sequence(id) { return DATA.sequences.filter(function (s) { return s.id === id; })[0]; }
-  function mergeFields(text, c) { return String(text).replace(/\{\{\s*name\s*\}\}/g, c.name || "there").replace(/\{\{\s*organisation\s*\}\}/g, c.org).replace(/\{\{\s*jobTitle\s*\}\}/g, c.jobTitle || "the team"); }
+  function meSig() { var me = Store.me(); return (me && me.emailSignature) || { text: "", image: "" }; }
+  function mergeFields(text, c) { return String(text).replace(/\{\{\s*name\s*\}\}/g, c.name || "there").replace(/\{\{\s*organisation\s*\}\}/g, c.org).replace(/\{\{\s*jobTitle\s*\}\}/g, c.jobTitle || "the team").replace(/\{\{\s*signature\s*\}\}/g, meSig().text || ""); }
+  /* the signature image (if any) renders after the text, but only when the body actually uses {{signature}} */
+  function sigImgHtml(bodyText) { var sig = meSig(); return (sig.image && /\{\{\s*signature\s*\}\}/.test(String(bodyText))) ? '<img class="ot-sig-img" src="' + sig.image + '" alt="signature">' : ""; }
+  function insertAtCursor(ta, text) {
+    var start = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+    var end = ta.selectionEnd != null ? ta.selectionEnd : ta.value.length;
+    ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
+    ta.focus(); ta.selectionStart = ta.selectionEnd = start + text.length;
+  }
+  function openInsertMenu(btnEl, ta) {
+    closeMenus();
+    var sig = meSig();
+    var items = [
+      { label: (sig.text || sig.image) ? "Your signature" : "Your signature — set it in your profile", tok: "{{signature}}" },
+      { label: "First name — {{name}}", tok: "{{name}}" },
+      { label: "Organisation — {{organisation}}", tok: "{{organisation}}" },
+      { label: "Job title — {{jobTitle}}", tok: "{{jobTitle}}" }
+    ];
+    var r = btnEl.getBoundingClientRect();
+    var menu = UI.el('<div class="ot-hmenu ot-insert-menu">' + items.map(function (it, i) { return '<button class="ot-hmenu-item" data-i="' + i + '">' + esc(it.label) + '</button>'; }).join("") + '</div>');
+    menu.style.left = Math.min(r.left, window.innerWidth - 250) + "px"; menu.style.top = (r.bottom + 4) + "px";
+    document.body.appendChild(menu);
+    menu.querySelectorAll(".ot-hmenu-item").forEach(function (b) { b.onclick = function (e) { e.stopPropagation(); insertAtCursor(ta, items[+b.dataset.i].tok); closeMenus(); }; });
+    setTimeout(function () { document.addEventListener("click", closeMenus); }, 0);
+  }
 
   function renderTemplates(body, main) {
     if (!selSeq || !sequence(selSeq)) selSeq = (DATA.sequences[0] || {}).id;
@@ -519,8 +545,6 @@ var Outreach = (function () {
     gs.querySelector("#gs-seq").onclick = function () { openSend(main); };
     gs.querySelector("#gs-tpl").onclick = function () { tsLib = "templates"; api.render(main); };
     body.appendChild(gs);
-
-    body.appendChild(UI.el('<div class="ot-gmail-note">✉︎ Emails go out from <b>your Yellowbelly Gmail</b>, and replies come back to <b>Gmail</b> as normal. This tool tracks the outreach — it isn’t an inbox, so there’s no reply screen here.</div>'));
 
     /* ---- library toggle ---- */
     var bar = UI.el('<div class="ot-libbar"><div class="ot-seg2"></div><button class="ot-lib-new"></button></div>');
@@ -554,6 +578,8 @@ var Outreach = (function () {
     var head = UI.el('<div class="ot-md-head"><div><div class="ot-md-title">' + esc(s.name) + '</div><div class="ot-md-meta">' + s.steps.length + ' email' + (s.steps.length > 1 ? "s" : "") + ' · sent to ' + esc(TYPES[s.audience]) + 's in To contact</div></div><div class="ot-md-acts"></div></div>');
     var runB = btn("Run this sequence", function () { openSend(main); }, "primary"); runB.classList.add("btn-sm");
     var edB = btn("Edit", function () { openSequence(s.id, main); }, ""); edB.classList.add("btn-sm");
+    var delB = UI.el('<button class="btn btn-sm btn-danger">Delete</button>'); delB.onclick = function () { deleteSequence(s.id, main); };
+    head.querySelector(".ot-md-acts").appendChild(delB);
     head.querySelector(".ot-md-acts").appendChild(edB);
     head.querySelector(".ot-md-acts").appendChild(runB);
     det.appendChild(head);
@@ -593,6 +619,8 @@ var Outreach = (function () {
     var usedIn = DATA.sequences.filter(function (s) { return s.steps.some(function (st) { return st.templateId === t.id; }); });
     var head = UI.el('<div class="ot-md-head"><div class="ot-md-title-row"><span class="ot-md-title">' + esc(t.name) + '</span><span class="ot-type ot-type-' + t.audience + '">' + esc(TYPES[t.audience]) + '</span></div><div class="ot-md-acts"></div></div>');
     var edB = btn("Edit", function () { openTemplate(t.id, main); }, "primary"); edB.classList.add("btn-sm");
+    var delB = UI.el('<button class="btn btn-sm btn-danger">Delete</button>'); delB.onclick = function () { deleteTemplate(t.id, main); };
+    head.querySelector(".ot-md-acts").appendChild(delB);
     head.querySelector(".ot-md-acts").appendChild(edB);
     det.appendChild(head);
     det.appendChild(UI.el(
@@ -616,6 +644,27 @@ var Outreach = (function () {
     DATA.sequences.push(s); selSeq = s.id; tsLib = "sequences"; openSequence(s.id, main);
   }
 
+  function deleteTemplate(id, main) {
+    var t = template(id); if (!t) return;
+    var used = DATA.sequences.filter(function (s) { return s.steps.some(function (st) { return st.templateId === id; }); });
+    var msg = "This can’t be undone." + (used.length ? " It’s the initial email in " + used.map(function (s) { return "“" + s.name + "”"; }).join(", ") + ", which will lose it." : "");
+    UI.confirm("Delete “" + t.name + "”?", msg, "Delete").then(function (ok) {
+      if (!ok) return;
+      DATA.templates = DATA.templates.filter(function (x) { return x.id !== id; });
+      if (selTpl === id) selTpl = (DATA.templates[0] || {}).id;
+      UI.toast("Template deleted"); api.render(main);
+    });
+  }
+  function deleteSequence(id, main) {
+    var s = sequence(id); if (!s) return;
+    UI.confirm("Delete “" + s.name + "”?", "The whole sequence and its follow-ups will be removed. This can’t be undone.", "Delete").then(function (ok) {
+      if (!ok) return;
+      DATA.sequences = DATA.sequences.filter(function (x) { return x.id !== id; });
+      if (selSeq === id) selSeq = (DATA.sequences[0] || {}).id;
+      UI.toast("Sequence deleted"); api.render(main);
+    });
+  }
+
   function openTemplate(id, main) {
     var t = template(id);
     var sh = UI.modalShell(t.name, { wide: true });
@@ -624,8 +673,10 @@ var Outreach = (function () {
       '<div class="ot-org-meta"><span class="ot-type ot-type-' + t.audience + '">' + esc(TYPES[t.audience]) + '</span></div>' +
       '<div class="field"><label>Template name</label><input type="text" id="tp-name" value="' + esc(t.name) + '"></div>' +
       '<div class="field"><label>Subject</label><input type="text" id="tp-subj" value="' + esc(t.subject) + '"></div>' +
-      '<div class="field"><label>Body</label><textarea id="tp-body" class="ot-tpl-body-edit">' + esc(t.body) + '</textarea></div>' +
-      '<div class="ot-merge">Merge fields: <code>{{name}}</code> <code>{{organisation}}</code> <code>{{jobTitle}}</code> — filled in per contact when you send.</div>';
+      '<div class="field"><div class="ot-body-label"><label>Body</label><button type="button" class="ot-insert-btn" id="tp-insert">Insert <span class="ot-insert-caret">▾</span></button></div><textarea id="tp-body" class="ot-tpl-body-edit">' + esc(t.body) + '</textarea></div>' +
+      '<div class="ot-merge">Merge fields: <code>{{name}}</code> <code>{{organisation}}</code> <code>{{jobTitle}}</code> · your <code>{{signature}}</code> — all filled in when you send.</div>';
+    var bodyTa = sh.body.querySelector("#tp-body");
+    sh.body.querySelector("#tp-insert").onclick = function (e) { e.stopPropagation(); openInsertMenu(sh.body.querySelector("#tp-insert"), bodyTa); };
     var save = btn("Save template", function () { t.name = sh.body.querySelector("#tp-name").value; t.subject = sh.body.querySelector("#tp-subj").value; t.body = sh.body.querySelector("#tp-body").value; UI.closeModal(); UI.toast("Template saved"); api.render(main); }, "primary");
     sh.foot.appendChild(btn("Cancel", UI.closeModal, "")); sh.foot.appendChild(save);
   }
@@ -702,10 +753,10 @@ var Outreach = (function () {
         var initial = template(s.steps[0].templateId);
         sh.body.innerHTML =
           '<div class="ot-send-prevbar">Previewing for <select id="prev-sel">' + recs.map(function (r, i) { return '<option value="' + i + '"' + (i === st.previewIdx ? " selected" : "") + '>' + esc((r.name || r.email) + " — " + r.org) + '</option>'; }).join("") + '</select> · <b>' + recs.length + '</b> recipients, each personalised.</div>' +
-          '<div class="ot-email"><div class="ot-email-h"><b>To:</b> ' + esc(c.email) + '</div><div class="ot-email-h"><b>Subject:</b> ' + esc(mergeFields(initial.subject, c)) + '</div><div class="ot-email-body">' + esc(mergeFields(initial.body, c)) + '</div></div>' +
+          '<div class="ot-email"><div class="ot-email-h"><b>To:</b> ' + esc(c.email) + '</div><div class="ot-email-h"><b>Subject:</b> ' + esc(mergeFields(initial.subject, c)) + '</div><div class="ot-email-body">' + esc(mergeFields(initial.body, c)) + sigImgHtml(initial.body) + '</div></div>' +
           '<div class="ot-sec2-head" style="margin-top:16px"><h3>Then, if no reply</h3></div><div class="ot-fups"></div>';
         var fw = sh.body.querySelector(".ot-fups");
-        s.steps.slice(1).forEach(function (step) { fw.appendChild(UI.el('<div class="ot-fup"><div class="ot-fup-when">+' + step.waitDays + ' days</div><div class="ot-email-body ot-fup-body">' + esc(mergeFields(step.copy || "", c)) + '</div></div>')); });
+        s.steps.slice(1).forEach(function (step) { fw.appendChild(UI.el('<div class="ot-fup"><div class="ot-fup-when">+' + step.waitDays + ' days</div><div class="ot-email-body ot-fup-body">' + esc(mergeFields(step.copy || "", c)) + sigImgHtml(step.copy || "") + '</div></div>')); });
         sh.body.querySelector("#prev-sel").onchange = function (e) { st.previewIdx = +e.target.value; draw(); };
         sh.foot.innerHTML = ""; sh.foot.appendChild(btn("Back", function () { st.step = 2; draw(); }, ""));
         sh.foot.appendChild(btn("Continue", function () { st.step = 4; draw(); }, "primary"));
