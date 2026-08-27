@@ -76,6 +76,24 @@ var Outreach = (function () {
         { type: "followup", waitDays: 5, copy: "Hi {{name}}, circling back on the agent series invitation — happy to share more. Best, Hannah" }
       ] }
     ];
+    /* synthesise a plausible contact history from each contact's status */
+    var seqByType = {}; sequences.forEach(function (s) { seqByType[s.audience] = s; });
+    var tplById = {}; templates.forEach(function (t) { tplById[t.id] = t; });
+    C.forEach(function (c) {
+      c.history = [];
+      if (c.status === "to-contact" || !c.last) return;
+      var s = seqByType[c.type]; if (!s) return;
+      var initTpl = tplById[s.steps[0].templateId];
+      var replied = ["replied", "scheduling", "booked", "delivered"].indexOf(c.status) !== -1;
+      var respondedClosed = c.status === "closed" && /already|existing|has a talk|booked/i.test(c.closedReason || "");
+      var repliedAny = replied || respondedClosed;
+      var hasFollowup = /follow-up/i.test(c.next || "") || ["scheduling", "booked", "delivered"].indexOf(c.status) !== -1;
+      var initDate = (repliedAny || hasFollowup) ? shiftIso(c.last, -6) : c.last;
+      c.history.push({ on: initDate, kind: "sent", seqId: s.id, seqName: s.name, step: "Initial email", templateId: initTpl.id, subject: initTpl.subject, body: initTpl.body });
+      if (hasFollowup && s.steps[1]) c.history.push({ on: shiftIso(initDate, s.steps[1].waitDays || 3), kind: "sent", seqId: s.id, seqName: s.name, step: "Follow-up 1", copy: s.steps[1].copy });
+      if (repliedAny) c.history.push({ on: c.last, kind: "reply", note: c.status === "closed" ? (c.closedReason || "Replied") : (c.notes || "Replied") });
+      c.history.sort(function (a, b) { return a.on < b.on ? -1 : a.on > b.on ? 1 : 0; });
+    });
     DATA = { campaigns: ["Autumn 2026 schools", "Autumn 2026 casting", "Autumn 2026 agents"], contacts: C, templates: templates, sequences: sequences };
   }
   seed();
@@ -86,6 +104,7 @@ var Outreach = (function () {
   function siblings(c) { return DATA.contacts.filter(function (x) { return x.org === c.org && x.id !== c.id; }); }
   function daysSince(iso) { if (!iso) return null; var a = new Date(iso.replace(/^-/, "") + "T00:00:00"), b = new Date(TODAY + "T00:00:00"); return Math.round((b - a) / 86400000); }
   function fmtDate(iso) { if (!iso) return "—"; var p = iso.replace(/^-/, "").split("-"); return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); }
+  function shiftIso(iso, delta) { var p = iso.split("-"); var x = new Date(+p[0], +p[1] - 1, +p[2]); x.setDate(x.getDate() + delta); return x.getFullYear() + "-" + ("0" + (x.getMonth() + 1)).slice(-2) + "-" + ("0" + x.getDate()).slice(-2); }
   function colLabel(id) { var c = COLUMNS.filter(function (x) { return x.id === id; })[0]; return c ? c.label.replace(" / no response", "") : id; }
   /* Mock: in the live tool this writes the change to the shared Google Sheet in Drive */
   function driveSaved() { UI.toast("Saved in Google Drive — sheet updated"); }
@@ -201,6 +220,7 @@ var Outreach = (function () {
           c.status = col.id;
           if (col.id === "scheduling" && !c.scheduling) c.scheduling = { requested: false, offered: [], agreed: "" };
           if (col.id === "closed" && !c.closedReason) c.closedReason = "No response";
+          if (col.id === "replied") (c.history = c.history || []).push({ on: TODAY, kind: "reply", note: "Marked as replied" });
           UI.toast((c.name || c.email) + " → " + col.label); driveSaved(); api.render(main);
         }
       });
@@ -410,6 +430,22 @@ var Outreach = (function () {
     var c = contact(id);
     var sh = UI.modalShell(c.name ? c.name : c.email, { wide: true });
     var others = siblings(c);
+    var hist = c.history || [];
+    var sentCount = hist.filter(function (e) { return e.kind === "sent"; }).length;
+    var lastReply = hist.filter(function (e) { return e.kind === "reply"; }).slice(-1)[0];
+    var histHtml = '<div class="ot-org-sec ot-hist"><div class="ot-sec-head"><span>History</span><span class="ot-hist-sum">' +
+      (sentCount ? sentCount + ' send' + (sentCount > 1 ? "s" : "") + (lastReply ? ' · replied' : ' · no reply yet') : 'not contacted yet') + '</span></div>';
+    if (!hist.length) {
+      histHtml += '<div class="ot-muted" style="padding:6px 0">Nothing sent yet — this contact hasn’t been emailed.</div>';
+    } else {
+      histHtml += '<div class="ot-timeline">' + hist.map(function (e, i) {
+        if (e.kind === "reply") {
+          return '<div class="ot-tl-item ot-tl-reply"><span class="ot-tl-dot"></span><div class="ot-tl-b"><div class="ot-tl-head"><span class="ot-tl-title">Replied</span><span class="ot-tl-date">' + fmtDate(e.on) + '</span></div>' + (e.note ? '<div class="ot-tl-note">' + esc(e.note) + '</div>' : '') + '</div></div>';
+        }
+        return '<button class="ot-tl-item ot-tl-sent" data-h="' + i + '"><span class="ot-tl-dot"></span><div class="ot-tl-b"><div class="ot-tl-head"><span class="ot-tl-title">' + esc(e.step || "Email sent") + '</span><span class="ot-tl-date">' + fmtDate(e.on) + '</span></div><div class="ot-tl-sub">via <b>' + esc(e.seqName || "—") + '</b> <span class="ot-tl-open">· view email ›</span></div></div></button>';
+      }).join("") + '</div>';
+    }
+    histHtml += '</div>';
     sh.body.innerHTML =
       '<div class="ot-org-meta"><span class="ot-type ot-type-' + c.type + '">' + esc(TYPES[c.type]) + "</span>" + statusChip(c.status) +
       (canSeeOwner() ? '<span class="ot-chip-plain">Owner: ' + esc(c.owner) + "</span>" : "") + '<span class="ot-chip-plain">' + esc(c.campaign) + "</span></div>" +
@@ -420,7 +456,8 @@ var Outreach = (function () {
       field("Last contacted", c.last ? fmtDate(c.last) : "—") + field("Next action", c.next || "—") + "</div>" +
       (c.status === "closed" ? '<div class="ot-closed-note">Closed — <b>' + esc(c.closedReason || "No response") + "</b> · won’t be re-emailed next cycle.</div>" : "") +
       '<div class="ot-org-sec"><div class="ot-sec-head"><span>Notes</span></div><div class="ot-notes">' + (c.notes ? esc(c.notes) : '<span class="ot-muted">No notes yet.</span>') + "</div></div>" +
-      '<div class="ot-org-sec"><div class="ot-sec-head"><span>Others at ' + esc(c.org) + " (" + others.length + ')</span><button class="ot-find" id="ot-find">✨ Find contacts</button></div><div id="ot-find-panel"></div><div class="ot-people"></div></div>';
+      '<div class="ot-org-sec"><div class="ot-sec-head"><span>Others at ' + esc(c.org) + " (" + others.length + ')</span><button class="ot-find" id="ot-find">✨ Find contacts</button></div><div id="ot-find-panel"></div><div class="ot-people"></div></div>' + histHtml;
+    sh.body.querySelectorAll(".ot-tl-sent").forEach(function (b) { b.onclick = function () { openEmailPopup(c, hist[+b.dataset.h]); }; });
     var pl = sh.body.querySelector(".ot-people");
     others.forEach(function (o) { pl.appendChild(UI.el('<div class="ot-person"><div class="ot-person-main"><span class="ot-person-name">' + esc(o.name || "Unknown") + '</span><span class="ot-person-title">' + esc(o.jobTitle || "") + "</span>" + statusChip(o.status) + '</div><div class="ot-person-email">' + esc(o.email) + "</div></div>")); });
     if (!others.length) pl.appendChild(UI.el('<div class="ot-muted" style="padding:6px 0">No other contacts at this organisation yet.</div>'));
@@ -434,6 +471,26 @@ var Outreach = (function () {
     sh.foot.appendChild(btn("Close", UI.closeModal, ""));
   }
   function field(label, val, raw) { return '<div class="ot-fld"><span class="ot-fld-l">' + esc(label) + '</span><span class="ot-fld-v">' + (raw ? val : esc(val)) + '</span></div>'; }
+
+  /* view a past email from a contact's history — merged for that contact, stacks over the card */
+  function openEmailPopup(c, ev) {
+    if (!ev) return;
+    var rawBody = ev.body || ev.copy || "";
+    var subject = ev.subject ? esc(mergeFields(ev.subject, c)) : "";
+    var ov = UI.el('<div class="modal-overlay ot-confirm-over"><div class="modal wide"><div class="modal-head"><div class="modal-title">' + esc((ev.step || "Email") + " · " + fmtDate(ev.on)) + '</div><button class="modal-close" aria-label="Close">×</button></div><div class="modal-body">' +
+      '<div class="ot-org-meta"><span class="ot-chip-plain">via ' + esc(ev.seqName || "—") + '</span></div>' +
+      '<div class="ot-email"><div class="ot-email-h"><b>To:</b> ' + esc(c.email) + '</div>' +
+      (subject ? '<div class="ot-email-h"><b>Subject:</b> ' + subject + '</div>' : '') +
+      '<div class="ot-email-body">' + esc(mergeFields(rawBody, c)) + sigImgHtml(rawBody) + '</div></div>' +
+      '<div class="ot-muted" style="font-size:12px;margin-top:10px">This is how the email read for ' + esc(c.name || c.org) + ' when it went out.</div>' +
+      '</div><div class="modal-foot"></div></div></div>');
+    document.body.appendChild(ov);
+    function close() { ov.remove(); }
+    ov.querySelector(".modal-close").onclick = close;
+    ov.addEventListener("mousedown", function (e) { if (e.target === ov) close(); });
+    var okB = UI.el('<button class="btn btn-ot">Close</button>'); okB.onclick = close;
+    ov.querySelector(".modal-foot").appendChild(okB);
+  }
 
   /* campaign picker (shared by Add + Import) */
   function campaignSelectHtml(id) {
@@ -644,24 +701,33 @@ var Outreach = (function () {
     DATA.sequences.push(s); selSeq = s.id; tsLib = "sequences"; openSequence(s.id, main);
   }
 
+  /* self-contained confirm popup — stacks OVER an open editor, so Cancel keeps the email open */
+  function confirmDelete(title, msg, onYes) {
+    var ov = UI.el('<div class="modal-overlay ot-confirm-over"><div class="modal"><div class="modal-head"><div class="modal-title">' + esc(title) + '</div><button class="modal-close" aria-label="Close">×</button></div><div class="modal-body"><p style="color:#444;line-height:1.5">' + esc(msg) + '</p></div><div class="modal-foot"></div></div></div>');
+    document.body.appendChild(ov);
+    function close() { ov.remove(); }
+    ov.querySelector(".modal-close").onclick = close;
+    ov.addEventListener("mousedown", function (e) { if (e.target === ov) close(); });
+    var cancel = UI.el('<button class="btn btn-ghost">Cancel</button>'); cancel.onclick = close;
+    var del = UI.el('<button class="btn btn-danger">Delete</button>'); del.onclick = function () { close(); onYes(); };
+    var foot = ov.querySelector(".modal-foot"); foot.appendChild(cancel); foot.appendChild(del);
+  }
   function deleteTemplate(id, main) {
     var t = template(id); if (!t) return;
     var used = DATA.sequences.filter(function (s) { return s.steps.some(function (st) { return st.templateId === id; }); });
     var msg = "This can’t be undone." + (used.length ? " It’s the initial email in " + used.map(function (s) { return "“" + s.name + "”"; }).join(", ") + ", which will lose it." : "");
-    UI.confirm("Delete “" + t.name + "”?", msg, "Delete").then(function (ok) {
-      if (!ok) return;
+    confirmDelete("Delete “" + t.name + "”?", msg, function () {
       DATA.templates = DATA.templates.filter(function (x) { return x.id !== id; });
       if (selTpl === id) selTpl = (DATA.templates[0] || {}).id;
-      UI.toast("Template deleted"); api.render(main);
+      UI.closeModal(); UI.toast("Template deleted"); api.render(main);
     });
   }
   function deleteSequence(id, main) {
     var s = sequence(id); if (!s) return;
-    UI.confirm("Delete “" + s.name + "”?", "The whole sequence and its follow-ups will be removed. This can’t be undone.", "Delete").then(function (ok) {
-      if (!ok) return;
+    confirmDelete("Delete “" + s.name + "”?", "The whole sequence and its follow-ups will be removed. This can’t be undone.", function () {
       DATA.sequences = DATA.sequences.filter(function (x) { return x.id !== id; });
       if (selSeq === id) selSeq = (DATA.sequences[0] || {}).id;
-      UI.toast("Sequence deleted"); api.render(main);
+      UI.closeModal(); UI.toast("Sequence deleted"); api.render(main);
     });
   }
 
@@ -678,6 +744,8 @@ var Outreach = (function () {
     var bodyTa = sh.body.querySelector("#tp-body");
     sh.body.querySelector("#tp-insert").onclick = function (e) { e.stopPropagation(); openInsertMenu(sh.body.querySelector("#tp-insert"), bodyTa); };
     var save = btn("Save template", function () { t.name = sh.body.querySelector("#tp-name").value; t.subject = sh.body.querySelector("#tp-subj").value; t.body = sh.body.querySelector("#tp-body").value; UI.closeModal(); UI.toast("Template saved"); api.render(main); }, "primary");
+    var delT = UI.el('<button class="btn btn-danger">Delete</button>'); delT.onclick = function () { deleteTemplate(t.id, main); };
+    sh.foot.appendChild(delT); sh.foot.appendChild(UI.el('<span class="foot-spacer"></span>'));
     sh.foot.appendChild(btn("Cancel", UI.closeModal, "")); sh.foot.appendChild(save);
   }
 
@@ -713,6 +781,8 @@ var Outreach = (function () {
       sh.body.querySelector("#sq-add").onclick = function () { s.steps.push({ type: "followup", waitDays: 5, copy: "Hi {{name}}, just following up…" }); draw(); };
     }
     draw();
+    var delS = UI.el('<button class="btn btn-danger">Delete</button>'); delS.onclick = function () { deleteSequence(s.id, main); };
+    sh.foot.appendChild(delS); sh.foot.appendChild(UI.el('<span class="foot-spacer"></span>'));
     sh.foot.appendChild(btn("Cancel", UI.closeModal, ""));
     sh.foot.appendChild(btn("Save sequence", function () { s.name = sh.body.querySelector("#sq-name").value; UI.closeModal(); UI.toast("Sequence saved"); api.render(main); }, "primary"));
   }
@@ -767,7 +837,14 @@ var Outreach = (function () {
           '<div class="ot-preview-only">✋ Preview only — <b>nothing was sent.</b> In the real tool, this is where the sequence would go out from your Gmail — BCC’d, in batches of ' + MAX_BATCH + ', so nothing bounces.</div>' +
           '<div class="ot-gmail-note" style="margin-top:12px">Replies come back to <b>your Gmail</b>, not here — the tool just tracks the outreach.</div></div>';
         sh.foot.innerHTML = ""; sh.foot.appendChild(btn("Back", function () { st.step = 3; draw(); }, ""));
-        sh.foot.appendChild(btn("Log as contacted →", function () { recs.forEach(function (c) { c.status = "contacted"; c.last = TODAY; c.next = "Awaiting reply"; }); UI.closeModal(); UI.toast(recs.length + " moved to Contacted (nothing was emailed)"); driveSaved(); api.render(main); }, "primary"));
+        sh.foot.appendChild(btn("Log as contacted →", function () {
+          var sq = sequence(st.seqId), initTpl = sq ? template(sq.steps[0].templateId) : null;
+          recs.forEach(function (c) {
+            c.status = "contacted"; c.last = TODAY; c.next = "Awaiting reply";
+            if (sq && initTpl) (c.history = c.history || []).push({ on: TODAY, kind: "sent", seqId: sq.id, seqName: sq.name, step: "Initial email", templateId: initTpl.id, subject: initTpl.subject, body: initTpl.body });
+          });
+          UI.closeModal(); UI.toast(recs.length + " moved to Contacted (nothing was emailed)"); driveSaved(); api.render(main);
+        }, "primary"));
       }
     }
     draw();

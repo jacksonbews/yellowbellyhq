@@ -1415,6 +1415,24 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
 .ot-insert-caret { font-size: 10px; }
 .ot-insert-menu { min-width: 220px; }
 .ot-sig-img { display: block; max-width: 240px; max-height: 90px; margin-top: 8px; }
+.ot-confirm-over { z-index: 200; }
+
+/* contact history timeline */
+.ot-hist-sum { font-size: 11.5px; color: var(--grey); }
+.ot-timeline { display: flex; flex-direction: column; }
+.ot-tl-item { display: flex; gap: 12px; text-align: left; width: 100%; background: none; padding: 11px 0; border-bottom: 1px solid var(--hair-soft); }
+.ot-tl-item:last-child { border-bottom: 0; }
+.ot-tl-dot { width: 9px; height: 9px; border-radius: 50%; background: #1a2d05; margin-top: 5px; flex: none; }
+.ot-tl-reply .ot-tl-dot { background: #b07d00; }
+.ot-tl-b { flex: 1; min-width: 0; }
+.ot-tl-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.ot-tl-title { font-size: 13px; font-weight: 600; }
+.ot-tl-date { font-size: 12px; color: var(--grey); flex: none; }
+.ot-tl-sub { font-size: 12px; color: #555; margin-top: 2px; }
+.ot-tl-open { color: #2c4a0a; }
+.ot-tl-sent { cursor: pointer; }
+.ot-tl-sent:hover .ot-tl-title, .ot-tl-sent:hover .ot-tl-open { text-decoration: underline; }
+.ot-tl-note { font-size: 12px; color: #555; margin-top: 3px; }
 
 .pf-sig { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--hair-soft); }
 .pf-sig-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
