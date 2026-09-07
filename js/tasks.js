@@ -4,7 +4,7 @@
 
 var Tasks = (function () {
   var api = {};
-  var filterAssignee = "all";   // 'all' | 'me' | member id
+  var filterAssignee = "me";   // 'all' | 'me' | member id — defaults to the logged-in person's own tasks
   var filterPriority = "all";
   var filterType = "all";       // 'all' | 'kpi'
 
