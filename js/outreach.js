@@ -269,7 +269,7 @@ var Outreach = (function () {
   /* ================= PIPELINE ================= */
   function renderOverview(body, main) {
     var bar = UI.el('<div class="toolbar ot-bar"></div>');
-    bar.appendChild(sel("Campaign", ["all"].concat(DATA.campaigns), fCampaign, function (v) { fCampaign = v; api.render(main); }, { all: "All campaigns" }));
+    bar.appendChild(sel("Campaign", ["all"].concat(allCampaigns()), fCampaign, function (v) { fCampaign = v; api.render(main); }, { all: "All campaigns" }));
     bar.appendChild(sel("Type", ["all", "school", "casting", "agent"], fType, function (v) { fType = v; api.render(main); }, mergeLabels({ all: "All types" }, TYPES)));
     if (canSeeOwner()) bar.appendChild(sel("Owner", ["all"].concat(OWNERS), fOwner, function (v) { fOwner = v; api.render(main); }, { all: "All owners" }));
     body.appendChild(bar);
@@ -334,7 +334,7 @@ var Outreach = (function () {
 
   function renderPipeline(body, main) {
     var bar = UI.el('<div class="toolbar ot-bar"></div>');
-    bar.appendChild(sel("Campaign", ["all"].concat(DATA.campaigns), fCampaign, function (v) { fCampaign = v; api.render(main); }, { all: "All campaigns" }));
+    bar.appendChild(sel("Campaign", ["all"].concat(allCampaigns()), fCampaign, function (v) { fCampaign = v; api.render(main); }, { all: "All campaigns" }));
     bar.appendChild(sel("Type", ["all", "school", "casting", "agent"], fType, function (v) { fType = v; api.render(main); }, mergeLabels({ all: "All types" }, TYPES)));
     if (canSeeOwner()) bar.appendChild(sel("Owner", ["all"].concat(OWNERS), fOwner, function (v) { fOwner = v; api.render(main); }, { all: "All owners" }));
     bar.appendChild(UI.el('<span class="ot-bar-spacer"></span>'));
@@ -632,10 +632,10 @@ var Outreach = (function () {
 
   /* campaign picker (shared by Add + Import) */
   function campaignSelectHtml(id) {
-    return '<select id="' + id + '">' + DATA.campaigns.map(function (c) { return "<option>" + esc(c) + "</option>"; }).join("") + '<option value="__new">＋ New campaign…</option></select>';
+    return '<select id="' + id + '">' + allCampaigns().map(function (c) { return "<option>" + esc(c) + "</option>"; }).join("") + '<option value="__new">＋ New campaign…</option></select>';
   }
   function resolveCampaign(selEl) {
-    if (selEl.value === "__new") { var name = prompt("Name the new campaign (e.g. Spring 2027 schools):"); if (name && name.trim()) { name = name.trim(); if (DATA.campaigns.indexOf(name) === -1) DATA.campaigns.push(name); return name; } return DATA.campaigns[0]; }
+    if (selEl.value === "__new") { var name = prompt("Name the new campaign (e.g. Spring 2027 schools):"); if (name && name.trim()) { name = name.trim(); Store.addOutreachCampaign(name); return name; } return allCampaigns()[0]; }
     return selEl.value;
   }
 
@@ -653,7 +653,7 @@ var Outreach = (function () {
     var save = btn("Add contact", function () {
       var org = sh.body.querySelector("#a-org").value.trim(), email = sh.body.querySelector("#a-email").value.trim();
       if (!org && !email) { sh.body.querySelector("#a-org").focus(); return; }
-      var nc = { id: "n" + Date.now(), org: org, type: sh.body.querySelector("#a-type").value, region: sh.body.querySelector("#a-region").value.trim(), website: "", name: sh.body.querySelector("#a-name").value.trim(), jobTitle: sh.body.querySelector("#a-title").value.trim(), email: email, phone: sh.body.querySelector("#a-phone").value.trim(), owner: "Hannah", status: "to-contact", campaign: DATA.campaigns[0], last: "", next: "Send intro email", notes: sh.body.querySelector("#a-notes").value.trim(), history: [] };
+      var nc = { id: "n" + Date.now(), org: org, type: sh.body.querySelector("#a-type").value, region: sh.body.querySelector("#a-region").value.trim(), website: "", name: sh.body.querySelector("#a-name").value.trim(), jobTitle: sh.body.querySelector("#a-title").value.trim(), email: email, phone: sh.body.querySelector("#a-phone").value.trim(), owner: "Hannah", status: "to-contact", campaign: allCampaigns()[0], last: "", next: "Send intro email", notes: sh.body.querySelector("#a-notes").value.trim(), history: [] };
       UI.closeModal(); UI.toast((org || email) + " added to To contact"); persistContacts(nc); api.render(main);
     }, "primary");
     sh.foot.appendChild(btn("Cancel", UI.closeModal, "")); sh.foot.appendChild(save);
@@ -695,8 +695,12 @@ var Outreach = (function () {
   }
 
   /* ================= TEMPLATES & SEQUENCES ================= */
-  function template(id) { return DATA.templates.filter(function (t) { return t.id === id; })[0]; }
-  function sequence(id) { return DATA.sequences.filter(function (s) { return s.id === id; })[0]; }
+  /* templates, sequences & campaigns are shared + live from the Store (Firestore) */
+  function allTemplates() { return Store.outreachTemplates(); }
+  function allSequences() { return Store.outreachSequences(); }
+  function allCampaigns() { return Store.outreachCampaigns(); }
+  function template(id) { return allTemplates().filter(function (t) { return t.id === id; })[0]; }
+  function sequence(id) { return allSequences().filter(function (s) { return s.id === id; })[0]; }
   function meSig() { var me = Store.me(); return (me && me.emailSignature) || { text: "", image: "" }; }
   function mergeFields(text, c) { return String(text).replace(/\{\{\s*name\s*\}\}/g, c.name || "there").replace(/\{\{\s*organisation\s*\}\}/g, c.org).replace(/\{\{\s*jobTitle\s*\}\}/g, c.jobTitle || "the team").replace(/\{\{\s*signature\s*\}\}/g, meSig().text || ""); }
   /* the signature image (if any) renders after the text, but only when the body actually uses {{signature}} */
@@ -725,8 +729,8 @@ var Outreach = (function () {
   }
 
   function renderTemplates(body, main) {
-    if (!selSeq || !sequence(selSeq)) selSeq = (DATA.sequences[0] || {}).id;
-    if (!selTpl || !template(selTpl)) selTpl = (DATA.templates[0] || {}).id;
+    if (!selSeq || !sequence(selSeq)) selSeq = (allSequences()[0] || {}).id;
+    if (!selTpl || !template(selTpl)) selTpl = (allTemplates()[0] || {}).id;
 
     /* ---- Get started prompt ---- */
     var gs = UI.el(
@@ -763,7 +767,7 @@ var Outreach = (function () {
   function renderSeqLib(body, main) {
     var wrap = UI.el('<div class="ot-md"><div class="ot-md-list"></div><div class="ot-md-detail"></div></div>');
     var listEl = wrap.querySelector(".ot-md-list");
-    DATA.sequences.forEach(function (s) {
+    allSequences().forEach(function (s) {
       var it = UI.el('<button class="ot-md-item' + (s.id === selSeq ? " on" : "") + '"><span class="ot-md-name">' + esc(s.name) + '</span><span class="ot-md-sub">' + esc(TYPES[s.audience]) + ' · ' + s.steps.length + ' step' + (s.steps.length > 1 ? "s" : "") + '</span></button>');
       it.onclick = function () { selSeq = s.id; api.render(main); };
       listEl.appendChild(it);
@@ -800,7 +804,7 @@ var Outreach = (function () {
     var wrap = UI.el('<div class="ot-md"><div class="ot-md-list"></div><div class="ot-md-detail"></div></div>');
     var listEl = wrap.querySelector(".ot-md-list");
     ["school", "casting", "agent"].forEach(function (aud) {
-      var list = DATA.templates.filter(function (t) { return t.audience === aud; });
+      var list = allTemplates().filter(function (t) { return t.audience === aud; });
       if (!list.length) return;
       listEl.appendChild(UI.el('<div class="ot-md-group">' + esc(TYPES[aud]) + 's</div>'));
       list.forEach(function (t) {
@@ -812,7 +816,7 @@ var Outreach = (function () {
     var det = wrap.querySelector(".ot-md-detail");
     var t = template(selTpl);
     if (!t) { det.appendChild(UI.el('<div class="ot-md-empty">No templates yet — add one with <b>+ New template</b>.</div>')); body.appendChild(wrap); return; }
-    var usedIn = DATA.sequences.filter(function (s) { return s.steps.some(function (st) { return st.templateId === t.id; }); });
+    var usedIn = allSequences().filter(function (s) { return s.steps.some(function (st) { return st.templateId === t.id; }); });
     var head = UI.el('<div class="ot-md-head"><div class="ot-md-title-row"><span class="ot-md-title">' + esc(t.name) + '</span><span class="ot-type ot-type-' + t.audience + '">' + esc(TYPES[t.audience]) + '</span></div><div class="ot-md-acts"></div></div>');
     var edB = btn("Edit", function () { openTemplate(t.id, main); }, "primary"); edB.classList.add("btn-sm");
     var delB = UI.el('<button class="btn btn-sm btn-danger">Delete</button>'); delB.onclick = function () { deleteTemplate(t.id, main); };
@@ -832,12 +836,12 @@ var Outreach = (function () {
 
   function openNewTemplate(main) {
     var t = { id: "t" + Date.now(), name: "New template", audience: "school", subject: "", body: "Hi {{name}},\n\n\n\nBest,\nHannah\nYellowbelly" };
-    DATA.templates.push(t); selTpl = t.id; tsLib = "templates"; openTemplate(t.id, main);
+    Store.saveOutreachTemplate(t); selTpl = t.id; tsLib = "templates"; openTemplate(t, main);
   }
   function openNewSequence(main) {
-    var t0 = DATA.templates[0] || {};
+    var t0 = allTemplates()[0] || {};
     var s = { id: "s" + Date.now(), name: "New sequence", audience: t0.audience || "school", steps: [{ type: "initial", templateId: t0.id || "", waitDays: 0 }] };
-    DATA.sequences.push(s); selSeq = s.id; tsLib = "sequences"; openSequence(s.id, main);
+    Store.saveOutreachSequence(s); selSeq = s.id; tsLib = "sequences"; openSequence(s, main);
   }
 
   /* self-contained confirm popup — stacks OVER an open editor, so Cancel keeps the email open */
@@ -853,25 +857,26 @@ var Outreach = (function () {
   }
   function deleteTemplate(id, main) {
     var t = template(id); if (!t) return;
-    var used = DATA.sequences.filter(function (s) { return s.steps.some(function (st) { return st.templateId === id; }); });
+    var used = allSequences().filter(function (s) { return s.steps.some(function (st) { return st.templateId === id; }); });
     var msg = "This can’t be undone." + (used.length ? " It’s the initial email in " + used.map(function (s) { return "“" + s.name + "”"; }).join(", ") + ", which will lose it." : "");
     confirmDelete("Delete “" + t.name + "”?", msg, function () {
-      DATA.templates = DATA.templates.filter(function (x) { return x.id !== id; });
-      if (selTpl === id) selTpl = (DATA.templates[0] || {}).id;
+      Store.deleteOutreachTemplate(id);
+      if (selTpl === id) selTpl = (allTemplates().filter(function (x) { return x.id !== id; })[0] || {}).id;
       UI.closeModal(); UI.toast("Template deleted"); api.render(main);
     });
   }
   function deleteSequence(id, main) {
     var s = sequence(id); if (!s) return;
     confirmDelete("Delete “" + s.name + "”?", "The whole sequence and its follow-ups will be removed. This can’t be undone.", function () {
-      DATA.sequences = DATA.sequences.filter(function (x) { return x.id !== id; });
-      if (selSeq === id) selSeq = (DATA.sequences[0] || {}).id;
+      Store.deleteOutreachSequence(id);
+      if (selSeq === id) selSeq = (allSequences().filter(function (x) { return x.id !== id; })[0] || {}).id;
       UI.closeModal(); UI.toast("Sequence deleted"); api.render(main);
     });
   }
 
   function openTemplate(id, main) {
-    var t = template(id);
+    var t = (id && typeof id === "object") ? id : template(id);
+    if (!t) return;
     var sh = UI.modalShell(t.name, { wide: true });
     sh.modal.classList.add("ot-tpl-modal");
     sh.body.innerHTML =
@@ -882,14 +887,15 @@ var Outreach = (function () {
       '<div class="ot-merge">Merge fields: <code>{{name}}</code> <code>{{organisation}}</code> <code>{{jobTitle}}</code> · your <code>{{signature}}</code> — all filled in when you send.</div>';
     var bodyTa = sh.body.querySelector("#tp-body");
     sh.body.querySelector("#tp-insert").onclick = function (e) { e.stopPropagation(); openInsertMenu(sh.body.querySelector("#tp-insert"), bodyTa); };
-    var save = btn("Save template", function () { t.name = sh.body.querySelector("#tp-name").value; t.subject = sh.body.querySelector("#tp-subj").value; t.body = sh.body.querySelector("#tp-body").value; UI.closeModal(); UI.toast("Template saved"); api.render(main); }, "primary");
+    var save = btn("Save template", function () { t.name = sh.body.querySelector("#tp-name").value; t.subject = sh.body.querySelector("#tp-subj").value; t.body = sh.body.querySelector("#tp-body").value; Store.saveOutreachTemplate(t); UI.closeModal(); UI.toast("Template saved"); api.render(main); }, "primary");
     var delT = UI.el('<button class="btn btn-danger">Delete</button>'); delT.onclick = function () { deleteTemplate(t.id, main); };
     sh.foot.appendChild(delT); sh.foot.appendChild(UI.el('<span class="foot-spacer"></span>'));
     sh.foot.appendChild(btn("Cancel", UI.closeModal, "")); sh.foot.appendChild(save);
   }
 
   function openSequence(id, main) {
-    var s = sequence(id);
+    var s = (id && typeof id === "object") ? id : sequence(id);
+    if (!s) return;
     var sh = UI.modalShell(s.name, { wide: true });
     sh.modal.classList.add("ot-tpl-modal");
     function draw() {
@@ -923,7 +929,7 @@ var Outreach = (function () {
     var delS = UI.el('<button class="btn btn-danger">Delete</button>'); delS.onclick = function () { deleteSequence(s.id, main); };
     sh.foot.appendChild(delS); sh.foot.appendChild(UI.el('<span class="foot-spacer"></span>'));
     sh.foot.appendChild(btn("Cancel", UI.closeModal, ""));
-    sh.foot.appendChild(btn("Save sequence", function () { s.name = sh.body.querySelector("#sq-name").value; UI.closeModal(); UI.toast("Sequence saved"); api.render(main); }, "primary"));
+    sh.foot.appendChild(btn("Save sequence", function () { s.name = sh.body.querySelector("#sq-name").value; Store.saveOutreachSequence(s); UI.closeModal(); UI.toast("Sequence saved"); api.render(main); }, "primary"));
   }
 
   /* send flow — preview only, never sends */
@@ -936,7 +942,7 @@ var Outreach = (function () {
       if (st.step === 1) {
         sh.body.innerHTML = '<p class="ot-imp-intro">Pick a sequence. Contacts sitting in <b>To contact</b> for that audience become the recipients.</p><div class="ot-send-seqs"></div>';
         var w = sh.body.querySelector(".ot-send-seqs");
-        DATA.sequences.forEach(function (s) {
+        allSequences().forEach(function (s) {
           var n = allContacts().filter(function (c) { return c.status === "to-contact" && c.type === s.audience; }).length;
           var card = UI.el('<div class="ot-send-seq' + (st.seqId === s.id ? " on" : "") + '"><div class="ot-tpl-name">' + esc(s.name) + '</div><div class="ot-seq-meta"><span class="ot-type ot-type-' + s.audience + '">' + esc(TYPES[s.audience]) + '</span> · ' + s.steps.length + ' steps · <b>' + n + '</b> in To contact</div></div>');
           card.onclick = function () { st.seqId = s.id; draw(); };

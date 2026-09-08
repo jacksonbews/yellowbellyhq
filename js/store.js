@@ -9,7 +9,7 @@
 var Store = (function () {
 
   var MODE = FIREBASE_CONFIG ? "firebase" : "demo";
-  var state = { team: [], tasks: [], notifications: [], docSections: [], docs: [], cities: [], departments: [], studios: [], studioTasks: [], studioArchive: [], suppliers: [], tickets: [], decisions: [], outreachContacts: [] };
+  var state = { team: [], tasks: [], notifications: [], docSections: [], docs: [], cities: [], departments: [], studios: [], studioTasks: [], studioArchive: [], suppliers: [], tickets: [], decisions: [], outreachContacts: [], outreachTemplates: [], outreachSequences: [], outreachCampaigns: [], pageAccess: {} };
   var me = null;               // current member object (effective — may be a preview)
   var realMe = null;           // the genuine logged-in account (never a preview)
   var previewId = null;        // set when an Ownership user previews as a teammate
@@ -145,6 +145,11 @@ var Store = (function () {
       migrateStudios();
       if (!state.suppliers) state.suppliers = JSON.parse(JSON.stringify(SUPPLIERS_SEED));
       if (!state.tickets) state.tickets = [];
+      if (!state.outreachContacts) state.outreachContacts = [];
+      if (!state.outreachTemplates) state.outreachTemplates = [];
+      if (!state.outreachSequences) state.outreachSequences = [];
+      if (!state.outreachCampaigns) state.outreachCampaigns = [];
+      if (!state.pageAccess) state.pageAccess = {};
       // Back-Log column removed — move any leftover tasks into To Do
       (state.tasks || []).forEach(function (t) { if (t.status === "back-log") t.status = "to-do"; });
       demoSave();
@@ -255,10 +260,30 @@ var Store = (function () {
       state.docSections.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
       emitChange();
     }));
-    unsubs.push(db.collection("docs").onSnapshot(function (snap) {
-      state.docs = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
-      emitChange();
-    }));
+    // Company Docs: owners read the whole collection; everyone else reads only
+    // the docs they're allowed to see, via per-visibility queries that match the
+    // (now restrictive) security rule — a single unconstrained read would be denied.
+    var docsOwner = realMe && (realMe.role === "owner-dev" || realMe.role === "owner");
+    if (docsOwner) {
+      unsubs.push(db.collection("docs").onSnapshot(function (snap) {
+        state.docs = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+        emitChange();
+      }));
+    } else if (realMe) {
+      var mid = realMe.id;
+      var docParts = { pub: [], viewer: [], assignee: [], mine: [] };
+      var mapDoc = function (d) { return Object.assign({ id: d.id }, d.data()); };
+      var rebuildDocs = function () {
+        var byId = {};
+        ["pub", "viewer", "assignee", "mine"].forEach(function (k) { docParts[k].forEach(function (d) { byId[d.id] = d; }); });
+        state.docs = Object.keys(byId).map(function (id) { return byId[id]; });
+        emitChange();
+      };
+      unsubs.push(db.collection("docs").where("visibility", "==", "everyone").onSnapshot(function (s) { docParts.pub = s.docs.map(mapDoc); rebuildDocs(); }));
+      unsubs.push(db.collection("docs").where("viewerIds", "array-contains", mid).onSnapshot(function (s) { docParts.viewer = s.docs.map(mapDoc); rebuildDocs(); }));
+      unsubs.push(db.collection("docs").where("assigneeIds", "array-contains", mid).onSnapshot(function (s) { docParts.assignee = s.docs.map(mapDoc); rebuildDocs(); }));
+      unsubs.push(db.collection("docs").where("uploadedBy", "==", mid).onSnapshot(function (s) { docParts.mine = s.docs.map(mapDoc); rebuildDocs(); }));
+    }
     unsubs.push(db.collection("cities").onSnapshot(function (snap) {
       state.cities = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       state.cities.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
@@ -267,6 +292,11 @@ var Store = (function () {
     unsubs.push(db.collection("meta").doc("departments").onSnapshot(function (doc) {
       var d = doc.data();
       state.departments = (d && d.list) ? d.list.slice() : [];
+      emitChange();
+    }));
+    unsubs.push(db.collection("meta").doc("pageAccess").onSnapshot(function (doc) {
+      var d = doc.data();
+      state.pageAccess = (d && d.roles) ? d.roles : {};
       emitChange();
     }));
     unsubs.push(db.collection("studios").onSnapshot(function (snap) {
@@ -303,6 +333,19 @@ var Store = (function () {
     if (realMe && (realMe.role === "owner-dev" || realMe.role === "manager-admin" || realMe.id === "hannah-mciver" || realMe.id === "harryet-belwood-howard")) {
       unsubs.push(db.collection("outreachContacts").onSnapshot(function (snap) {
         state.outreachContacts = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+        emitChange();
+      }));
+      unsubs.push(db.collection("outreachTemplates").onSnapshot(function (snap) {
+        state.outreachTemplates = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+        emitChange();
+      }));
+      unsubs.push(db.collection("outreachSequences").onSnapshot(function (snap) {
+        state.outreachSequences = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+        emitChange();
+      }));
+      unsubs.push(db.collection("outreachConfig").doc("campaigns").onSnapshot(function (doc) {
+        var d = doc.data();
+        state.outreachCampaigns = (d && d.list) ? d.list.slice() : [];
         emitChange();
       }));
     }
@@ -524,23 +567,19 @@ var Store = (function () {
     decisions: ["owner-dev", "owner", "manager-admin"],
     tickets: ["owner-dev", "owner"]
   };
-  var PAGE_ACCESS_KEY = "ybhq_page_access";
-  var _pageAccess = null;
-  function pageAccessCfg() {
-    if (!_pageAccess) {
-      var saved = null;
-      try { saved = JSON.parse(localStorage.getItem(PAGE_ACCESS_KEY)); } catch (e) {}
-      _pageAccess = Object.assign({}, DEFAULT_PAGE_ACCESS, saved || {});
-    }
-    return _pageAccess;
-  }
+  // Page Access is a shared, live control stored in meta/pageAccess (read by
+  // everyone to gate their nav; written by Ownership). Falls back to defaults.
+  function pageAccessCfg() { return Object.assign({}, DEFAULT_PAGE_ACCESS, state.pageAccess || {}); }
   api.ROLE_LIST = ["owner-dev", "owner", "studio-admin", "manager-admin", "team"];
   api.pageList = function () { return PAGE_LIST.slice(); };
   api.pageAccessRoles = function (pageId) { return (pageAccessCfg()[pageId] || []).slice(); };
   api.setPageAccessRoles = function (pageId, roles) {
-    pageAccessCfg()[pageId] = roles.slice();
-    try { localStorage.setItem(PAGE_ACCESS_KEY, JSON.stringify(_pageAccess)); } catch (e) {}
+    var cfg = Object.assign({}, DEFAULT_PAGE_ACCESS, state.pageAccess || {});
+    cfg[pageId] = roles.slice();
+    state.pageAccess = cfg;
+    if (MODE === "demo") { demoSave(); emitChange(); return Promise.resolve(); }
     emitChange();
+    return db.collection("meta").doc("pageAccess").set({ roles: cfg });
   };
   api.canViewPage = function (pageId, m) {
     m = m || me; if (!m) return false;
@@ -1077,6 +1116,60 @@ var Store = (function () {
       demoSave(); emitChange(); return Promise.resolve();
     }
     return db.collection("outreachContacts").doc(id).delete();
+  };
+
+  /* ---- outreach templates (shared across the outreach team) ---- */
+  api.outreachTemplates = function () { return state.outreachTemplates; };
+  api.saveOutreachTemplate = function (t) {
+    if (MODE === "demo") {
+      var i = state.outreachTemplates.findIndex(function (x) { return x.id === t.id; });
+      if (i === -1) state.outreachTemplates.push(t); else state.outreachTemplates[i] = t;
+      demoSave(); emitChange(); return Promise.resolve();
+    }
+    var copy = Object.assign({}, t); delete copy.id;
+    return db.collection("outreachTemplates").doc(t.id).set(copy);
+  };
+  api.deleteOutreachTemplate = function (id) {
+    if (MODE === "demo") {
+      state.outreachTemplates = state.outreachTemplates.filter(function (x) { return x.id !== id; });
+      demoSave(); emitChange(); return Promise.resolve();
+    }
+    return db.collection("outreachTemplates").doc(id).delete();
+  };
+
+  /* ---- outreach sequences (shared across the outreach team) ---- */
+  api.outreachSequences = function () { return state.outreachSequences; };
+  api.saveOutreachSequence = function (s) {
+    if (MODE === "demo") {
+      var i = state.outreachSequences.findIndex(function (x) { return x.id === s.id; });
+      if (i === -1) state.outreachSequences.push(s); else state.outreachSequences[i] = s;
+      demoSave(); emitChange(); return Promise.resolve();
+    }
+    var copy = Object.assign({}, s); delete copy.id;
+    return db.collection("outreachSequences").doc(s.id).set(copy);
+  };
+  api.deleteOutreachSequence = function (id) {
+    if (MODE === "demo") {
+      state.outreachSequences = state.outreachSequences.filter(function (x) { return x.id !== id; });
+      demoSave(); emitChange(); return Promise.resolve();
+    }
+    return db.collection("outreachSequences").doc(id).delete();
+  };
+
+  /* ---- outreach campaigns (a shared list of labels in one doc) ---- */
+  var DEFAULT_CAMPAIGNS = ["Autumn 2026 schools", "Autumn 2026 casting", "Autumn 2026 agents"];
+  api.outreachCampaigns = function () {
+    return (state.outreachCampaigns && state.outreachCampaigns.length) ? state.outreachCampaigns.slice() : DEFAULT_CAMPAIGNS.slice();
+  };
+  api.addOutreachCampaign = function (name) {
+    name = (name || "").trim();
+    if (!name) return Promise.resolve();
+    var list = api.outreachCampaigns();
+    if (list.indexOf(name) === -1) list.push(name);
+    state.outreachCampaigns = list;
+    if (MODE === "demo") { demoSave(); emitChange(); return Promise.resolve(); }
+    emitChange();
+    return db.collection("outreachConfig").doc("campaigns").set({ list: list });
   };
 
   /* ---- departments (managed list of names; Ownership & Developer) ---- */

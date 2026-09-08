@@ -40,6 +40,13 @@ service cloud.firestore {
       return isOwner() ||
         (onTeam() && myMapping().role in ['studio-admin', 'manager-admin']);
     }
+    // Who can use Outreach — mirrors the app's Outreach access:
+    // Ownership & Developer, Manager Admin, plus Hannah + Harryet.
+    function isOutreachUser() {
+      return isOwnerDev() ||
+        (onTeam() && (myMapping().role == 'manager-admin' ||
+                      myMemberId() in ['hannah-mciver', 'harryet-belwood-howard']));
+    }
 
     // ---------- team ----------
     // add / remove members: both Ownership tiers.
@@ -148,26 +155,35 @@ service cloud.firestore {
         (onTeam() && myMapping().role == 'manager-admin');
     }
 
-    // ---------- Outreach contacts (the outreach users only) ----------
-    // Matches the app's Outreach access: Ownership & Developer, Manager Admin,
-    // plus Hannah McIver and Harryet Belwood-Howard.
+    // ---------- Outreach (the outreach users only) ----------
+    // Contacts, templates, sequences and the shared campaign list all live
+    // here and are shared + live across the outreach team.
     match /outreachContacts/{id} {
-      allow read, write: if isOwnerDev() ||
-        (onTeam() && (myMapping().role == 'manager-admin' ||
-                      myMemberId() in ['hannah-mciver', 'harryet-belwood-howard']));
+      allow read, write: if isOutreachUser();
+    }
+    match /outreachTemplates/{id} {
+      allow read, write: if isOutreachUser();
+    }
+    match /outreachSequences/{id} {
+      allow read, write: if isOutreachUser();
+    }
+    match /outreachConfig/{id} {
+      allow read, write: if isOutreachUser();
     }
 
     match /docs/{id} {
-      // Per-file visibility ("Who can see") is enforced in the app UI:
-      // non-owners only ever see files that are public, theirs, shared
-      // with them, or assigned to them.
-      // NOTE for go-live hardening: to enforce this at the database level
-      // too, split the docs listener in store.js into per-viewer queries
-      // (visibility=='everyone', viewerIds array-contains me, assigneeIds
-      // array-contains me, uploadedBy==me) and tighten this read rule to
-      // match. A single unconstrained collection listener can't be used
-      // with a restrictive read rule.
-      allow read: if onTeam();
+      // Per-file visibility ("Who can see") is enforced at the database level:
+      // owners read everything; everyone else can only read a file that is
+      // public, theirs, shared with them, or assigned to them. This matches
+      // canSeeDoc() in store.js and the split per-viewer listener there.
+      // (Missing visibility field defaults to 'everyone', as in the app.)
+      allow read: if isOwner() ||
+        (onTeam() && (
+          resource.data.get('visibility', 'everyone') == 'everyone' ||
+          resource.data.get('uploadedBy', '') == myMemberId() ||
+          myMemberId() in resource.data.get('viewerIds', []) ||
+          myMemberId() in resource.data.get('assigneeIds', [])
+        ));
       allow write: if isOwner();
     }
   }
