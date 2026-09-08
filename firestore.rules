@@ -148,6 +148,15 @@ service cloud.firestore {
         (onTeam() && myMapping().role == 'manager-admin');
     }
 
+    // ---------- Outreach contacts (the outreach users only) ----------
+    // Matches the app's Outreach access: Ownership & Developer, Manager Admin,
+    // plus Hannah McIver and Harryet Belwood-Howard.
+    match /outreachContacts/{id} {
+      allow read, write: if isOwnerDev() ||
+        (onTeam() && (myMapping().role == 'manager-admin' ||
+                      myMemberId() in ['hannah-mciver', 'harryet-belwood-howard']));
+    }
+
     match /docs/{id} {
       // Per-file visibility ("Who can see") is enforced in the app UI:
       // non-owners only ever see files that are public, theirs, shared

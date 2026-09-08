@@ -101,8 +101,16 @@ var Outreach = (function () {
 
   /* ---------- helpers ---------- */
   function esc(s) { return UI.esc(s); }
-  function contact(id) { return DATA.contacts.filter(function (c) { return c.id === id; })[0]; }
-  function siblings(c) { return DATA.contacts.filter(function (x) { return x.org === c.org && x.id !== c.id; }); }
+  function allContacts() { return Store.outreachContacts(); }   // shared, live from Firestore
+  function contact(id) { return allContacts().filter(function (c) { return c.id === id; })[0]; }
+  function siblings(c) { return allContacts().filter(function (x) { return x.org === c.org && x.id !== c.id; }); }
+  /* persist a contact (or list) to the shared store, and optionally mirror to Google Sheets */
+  function persistContacts(list) {
+    list = [].concat(list || []).filter(Boolean);
+    if (!list.length) return;
+    if (list.length === 1) Store.saveOutreachContact(list[0]); else Store.saveOutreachContacts(list);
+    driveSync(list);
+  }
   function daysSince(iso) { if (!iso) return null; var a = new Date(iso.replace(/^-/, "") + "T00:00:00"), b = new Date(TODAY + "T00:00:00"); return Math.round((b - a) / 86400000); }
   function fmtDate(iso) { if (!iso) return "—"; var p = iso.replace(/^-/, "").split("-"); return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); }
   function shiftIso(iso, delta) { var p = iso.split("-"); var x = new Date(+p[0], +p[1] - 1, +p[2]); x.setDate(x.getDate() + delta); return x.getFullYear() + "-" + ("0" + (x.getMonth() + 1)).slice(-2) + "-" + ("0" + x.getDate()).slice(-2); }
@@ -166,11 +174,12 @@ var Outreach = (function () {
   }
   function driveSync(contacts) {
     contacts = [].concat(contacts || []).filter(Boolean);
-    if (!sheetConfigured()) { UI.toast("Saved in Google Drive — sheet updated"); return; }
-    if (!contacts.length) return;
+    // Contacts are saved to the shared HQ store (Firestore). The Google Sheet is an
+    // optional mirror — only runs when a Sheet is configured in js/integrations.js.
+    if (!sheetConfigured() || !contacts.length) return;
     syncContacts(contacts)
-      .then(function () { UI.toast("Saved in Google Drive — sheet updated"); })
-      .catch(function (e) { UI.toast("Couldn’t reach Google Sheets — check the setup"); if (window.console) console.warn("[Outreach] Sheets sync failed:", e); });
+      .then(function () { UI.toast("Also copied to your Google Sheet"); })
+      .catch(function (e) { if (window.console) console.warn("[Outreach] Sheets sync failed:", e); });
   }
   function isStale(c) {
     if (c.status !== "contacted" && c.status !== "scheduling") return false;
@@ -188,7 +197,7 @@ var Outreach = (function () {
   var SVG_PENCIL = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
 
   function pipeContacts() {
-    return DATA.contacts.filter(function (c) {
+    return allContacts().filter(function (c) {
       if (fCampaign !== "all" && c.campaign !== fCampaign) return false;
       if (fType !== "all" && c.type !== fType) return false;
       if (fOwner !== "all" && c.owner !== fOwner) return false;
@@ -350,7 +359,7 @@ var Outreach = (function () {
           if (col.id === "scheduling" && !c.scheduling) c.scheduling = { requested: false, offered: [], agreed: "" };
           if (col.id === "closed" && !c.closedReason) c.closedReason = "No response";
           if (col.id === "replied") (c.history = c.history || []).push({ on: TODAY, kind: "reply", note: "Marked as replied" });
-          UI.toast((c.name || c.email) + " → " + col.label); driveSync(c); api.render(main);
+          UI.toast((c.name || c.email) + " → " + col.label); persistContacts(c); api.render(main);
         }
       });
       board.appendChild(column);
@@ -390,10 +399,10 @@ var Outreach = (function () {
     var offeredTxt = s.offered.length ? s.offered.map(fmtDate).join(", ") : "none yet";
     wrap.innerHTML = line(s.requested, !s.requested, "Dates requested from Liv") + line(s.offered.length, s.requested && !s.offered.length, "Dates offered: " + esc(offeredTxt)) + line(s.agreed, s.offered.length && !s.agreed, "Agreed with school: " + (s.agreed ? fmtDate(s.agreed) : "—"));
     var actions = UI.el('<div class="ot-sched-actions"></div>');
-    if (!s.requested) actions.appendChild(btn("Request dates", function () { s.requested = true; UI.toast("Marked as requested from Liv"); api.render(main); }));
-    else if (!s.offered.length) actions.appendChild(btn("Add offered dates", function () { s.offered = [d(-14), d(-21)]; UI.toast("Recorded 2 dates from Liv (demo)"); api.render(main); }));
-    else if (!s.agreed) actions.appendChild(btn("Mark date agreed", function () { s.agreed = s.offered[0]; UI.toast("Date agreed with school"); api.render(main); }));
-    else actions.appendChild(btn("Move to Booked", function () { c.status = "booked"; c.next = "Liv to deliver " + fmtDate(s.agreed); api.render(main); }));
+    if (!s.requested) actions.appendChild(btn("Request dates", function () { s.requested = true; persistContacts(c); UI.toast("Marked as requested from Liv"); api.render(main); }));
+    else if (!s.offered.length) actions.appendChild(btn("Add offered dates", function () { s.offered = [d(-14), d(-21)]; persistContacts(c); UI.toast("Recorded 2 dates from Liv (demo)"); api.render(main); }));
+    else if (!s.agreed) actions.appendChild(btn("Mark date agreed", function () { s.agreed = s.offered[0]; persistContacts(c); UI.toast("Date agreed with school"); api.render(main); }));
+    else actions.appendChild(btn("Move to Booked", function () { c.status = "booked"; c.next = "Liv to deliver " + fmtDate(s.agreed); persistContacts(c); api.render(main); }));
     wrap.appendChild(actions);
     return wrap;
   }
@@ -456,7 +465,7 @@ var Outreach = (function () {
         host.appendChild(fbar);
       }
 
-      var rows = DATA.contacts.filter(matchContact);
+      var rows = allContacts().filter(matchContact);
       if (sortKey) { var cfg = CCOLS.filter(function (c) { return c.key === sortKey; })[0]; rows = rows.slice().sort(function (a, b) { var av = cfg.val(a), bv = cfg.val(b); return (av < bv ? -1 : av > bv ? 1 : 0) * sortDir; }); }
 
       lastRows = rows;
@@ -538,7 +547,7 @@ var Outreach = (function () {
     var items = [];
     if (cfg.kind === "filter") {
       items.push({ label: "All", on: function () { delete colFilters[cfg.key]; } });
-      var vals = {}; DATA.contacts.forEach(function (c) { var v = cfg.val(c); if (v !== "" && v != null) vals[v] = true; });
+      var vals = {}; allContacts().forEach(function (c) { var v = cfg.val(c); if (v !== "" && v != null) vals[v] = true; });
       Object.keys(vals).sort().forEach(function (v) { items.push({ label: cfg.disp(v), active: String(colFilters[cfg.key]) === String(v), on: function () { colFilters[cfg.key] = v; } }); });
     } else {
       var aL = cfg.key === "last" ? "Newest first" : "A → Z", bL = cfg.key === "last" ? "Oldest first" : "Z → A";
@@ -645,8 +654,7 @@ var Outreach = (function () {
       var org = sh.body.querySelector("#a-org").value.trim(), email = sh.body.querySelector("#a-email").value.trim();
       if (!org && !email) { sh.body.querySelector("#a-org").focus(); return; }
       var nc = { id: "n" + Date.now(), org: org, type: sh.body.querySelector("#a-type").value, region: sh.body.querySelector("#a-region").value.trim(), website: "", name: sh.body.querySelector("#a-name").value.trim(), jobTitle: sh.body.querySelector("#a-title").value.trim(), email: email, phone: sh.body.querySelector("#a-phone").value.trim(), owner: "Hannah", status: "to-contact", campaign: DATA.campaigns[0], last: "", next: "Send intro email", notes: sh.body.querySelector("#a-notes").value.trim(), history: [] };
-      DATA.contacts.unshift(nc);
-      UI.closeModal(); UI.toast((org || email) + " added to To contact"); driveSync(nc); api.render(main);
+      UI.closeModal(); UI.toast((org || email) + " added to To contact"); persistContacts(nc); api.render(main);
     }, "primary");
     sh.foot.appendChild(btn("Cancel", UI.closeModal, "")); sh.foot.appendChild(save);
   }
@@ -678,8 +686,8 @@ var Outreach = (function () {
         sh.foot.innerHTML = ""; sh.foot.appendChild(btn("Back", function () { step = 2; draw(); }, ""));
         sh.foot.appendChild(btn("Import " + total + " contacts", function () {
           var imported = [];
-          parsed.forEach(function (o) { o.emails.forEach(function (em) { var ic = { id: "i" + Date.now() + Math.random().toString(36).slice(2, 5), org: o.name, type: "school", region: o.region || "", website: "", name: "", jobTitle: "", email: em, phone: "", owner: "Hannah", status: "to-contact", campaign: window._impCamp, last: "", next: "Send intro email", notes: o.notes || "", history: [] }; DATA.contacts.unshift(ic); imported.push(ic); }); });
-          UI.closeModal(); UI.toast(total + " contacts imported to To contact"); driveSync(imported); api.render(main);
+          parsed.forEach(function (o) { o.emails.forEach(function (em) { var ic = { id: "i" + Date.now() + Math.random().toString(36).slice(2, 5), org: o.name, type: "school", region: o.region || "", website: "", name: "", jobTitle: "", email: em, phone: "", owner: "Hannah", status: "to-contact", campaign: window._impCamp, last: "", next: "Send intro email", notes: o.notes || "", history: [] }; imported.push(ic); }); });
+          UI.closeModal(); UI.toast(total + " contacts imported to To contact"); persistContacts(imported); api.render(main);
         }, "primary"));
       }
     }
@@ -922,14 +930,14 @@ var Outreach = (function () {
   function openSend(main) {
     var sh = UI.modalShell("Start a send", { wide: true });
     var st = { seqId: null, selected: {}, step: 1, previewIdx: 0 };
-    function recipients() { var s = sequence(st.seqId); return DATA.contacts.filter(function (c) { return c.status === "to-contact" && c.type === s.audience; }); }
+    function recipients() { var s = sequence(st.seqId); return allContacts().filter(function (c) { return c.status === "to-contact" && c.type === s.audience; }); }
     function chosen() { return recipients().filter(function (c) { return st.selected[c.id]; }); }
     function draw() {
       if (st.step === 1) {
         sh.body.innerHTML = '<p class="ot-imp-intro">Pick a sequence. Contacts sitting in <b>To contact</b> for that audience become the recipients.</p><div class="ot-send-seqs"></div>';
         var w = sh.body.querySelector(".ot-send-seqs");
         DATA.sequences.forEach(function (s) {
-          var n = DATA.contacts.filter(function (c) { return c.status === "to-contact" && c.type === s.audience; }).length;
+          var n = allContacts().filter(function (c) { return c.status === "to-contact" && c.type === s.audience; }).length;
           var card = UI.el('<div class="ot-send-seq' + (st.seqId === s.id ? " on" : "") + '"><div class="ot-tpl-name">' + esc(s.name) + '</div><div class="ot-seq-meta"><span class="ot-type ot-type-' + s.audience + '">' + esc(TYPES[s.audience]) + '</span> · ' + s.steps.length + ' steps · <b>' + n + '</b> in To contact</div></div>');
           card.onclick = function () { st.seqId = s.id; draw(); };
           w.appendChild(card);
@@ -974,7 +982,7 @@ var Outreach = (function () {
             c.status = "contacted"; c.last = TODAY; c.next = "Awaiting reply";
             if (sq && initTpl) (c.history = c.history || []).push({ on: TODAY, kind: "sent", seqId: sq.id, seqName: sq.name, step: "Initial email", templateId: initTpl.id, subject: initTpl.subject, body: initTpl.body });
           });
-          UI.closeModal(); UI.toast(recs.length + " moved to Contacted (nothing was emailed)"); driveSync(recs); api.render(main);
+          UI.closeModal(); UI.toast(recs.length + " moved to Contacted (nothing was emailed)"); persistContacts(recs); api.render(main);
         }, "primary"));
       }
     }

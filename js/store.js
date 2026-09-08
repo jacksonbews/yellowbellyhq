@@ -9,7 +9,7 @@
 var Store = (function () {
 
   var MODE = FIREBASE_CONFIG ? "firebase" : "demo";
-  var state = { team: [], tasks: [], notifications: [], docSections: [], docs: [], cities: [], departments: [], studios: [], studioTasks: [], studioArchive: [], suppliers: [], tickets: [], decisions: [] };
+  var state = { team: [], tasks: [], notifications: [], docSections: [], docs: [], cities: [], departments: [], studios: [], studioTasks: [], studioArchive: [], suppliers: [], tickets: [], decisions: [], outreachContacts: [] };
   var me = null;               // current member object (effective — may be a preview)
   var realMe = null;           // the genuine logged-in account (never a preview)
   var previewId = null;        // set when an Ownership user previews as a teammate
@@ -298,6 +298,14 @@ var Store = (function () {
       state.tickets = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
       emitChange();
     }));
+    // Outreach contacts are read-restricted to the outreach users — only subscribe
+    // when the REAL account is allowed, to avoid permission-denied errors.
+    if (realMe && (realMe.role === "owner-dev" || realMe.role === "manager-admin" || realMe.id === "hannah-mciver" || realMe.id === "harryet-belwood-howard")) {
+      unsubs.push(db.collection("outreachContacts").onSnapshot(function (snap) {
+        state.outreachContacts = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+        emitChange();
+      }));
+    }
   }
   function fbListenNotifications() {
     if (!me) return;
@@ -1036,6 +1044,39 @@ var Store = (function () {
       demoSave(); emitChange(); return Promise.resolve();
     }
     return db.collection("decisions").doc(id).delete();
+  };
+
+  /* ---- Outreach contacts (shared, live) ---- */
+  api.outreachContacts = function () { return state.outreachContacts; };
+  function upsertLocalContact(c) {
+    var i = state.outreachContacts.findIndex(function (x) { return x.id === c.id; });
+    if (i === -1) state.outreachContacts.unshift(c); else state.outreachContacts[i] = c;
+  }
+  api.saveOutreachContact = function (c) {
+    if (MODE === "demo") { upsertLocalContact(c); demoSave(); emitChange(); return Promise.resolve(); }
+    var copy = Object.assign({}, c); delete copy.id;
+    return db.collection("outreachContacts").doc(c.id).set(copy);
+  };
+  api.saveOutreachContacts = function (list) {
+    list = list || [];
+    if (MODE === "demo") { list.forEach(upsertLocalContact); demoSave(); emitChange(); return Promise.resolve(); }
+    // Firestore batches cap at 500 writes — chunk to be safe on large imports
+    var chunks = [], i;
+    for (i = 0; i < list.length; i += 400) chunks.push(list.slice(i, i + 400));
+    return chunks.reduce(function (p, chunk) {
+      return p.then(function () {
+        var batch = db.batch();
+        chunk.forEach(function (c) { var copy = Object.assign({}, c); delete copy.id; batch.set(db.collection("outreachContacts").doc(c.id), copy); });
+        return batch.commit();
+      });
+    }, Promise.resolve());
+  };
+  api.deleteOutreachContact = function (id) {
+    if (MODE === "demo") {
+      state.outreachContacts = state.outreachContacts.filter(function (x) { return x.id !== id; });
+      demoSave(); emitChange(); return Promise.resolve();
+    }
+    return db.collection("outreachContacts").doc(id).delete();
   };
 
   /* ---- departments (managed list of names; Ownership & Developer) ---- */
