@@ -288,7 +288,7 @@ var Store = (function () {
     }));
     // Decision Log is read-restricted, so only subscribe when the REAL account
     // (not a preview) is allowed to read it — avoids permission-denied errors.
-    if (realMe && (realMe.role === "owner-dev" || realMe.role === "manager-admin")) {
+    if (realMe && (realMe.role === "owner-dev" || realMe.role === "owner" || realMe.role === "manager-admin")) {
       unsubs.push(db.collection("decisions").onSnapshot(function (snap) {
         state.decisions = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
         emitChange();

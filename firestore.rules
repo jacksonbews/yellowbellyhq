@@ -142,9 +142,9 @@ service cloud.firestore {
       allow create, update, delete: if isOwner();
     }
 
-    // ---------- Decision Log (Ownership & Developer + Manager Admin only) ----------
+    // ---------- Decision Log (Ownership tiers + Manager Admin) ----------
     match /decisions/{id} {
-      allow read, write: if isOwnerDev() ||
+      allow read, write: if isOwner() ||
         (onTeam() && myMapping().role == 'manager-admin');
     }
 
