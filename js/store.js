@@ -480,10 +480,10 @@ var Store = (function () {
     var r = roleOf(mem);
     return r === "owner-dev" || r === "owner" || r === "manager-admin" || api.isDeptHead(mem);
   };
-  /* Decision Log — restricted to Ownership & Developer and Manager Admin */
+  /* Decision Log — restricted to the leadership tiers: Ownership & Developer, Ownership, and Manager Admin */
   api.canViewDecisionLog = function (m) {
     var r = roleOf(m);
-    return r === "owner-dev" || r === "manager-admin";
+    return r === "owner-dev" || r === "owner" || r === "manager-admin";
   };
   /* Outreach — scoped to Hannah + Harriet (its two users), plus owner-dev to manage/test */
   api.canViewOutreach = function (m) {
@@ -513,7 +513,7 @@ var Store = (function () {
     studio: ["owner-dev", "owner", "studio-admin", "manager-admin", "team"],
     reports: ["owner-dev", "owner"],
     suppliers: ["owner-dev", "owner"],
-    decisions: ["owner-dev", "manager-admin"],
+    decisions: ["owner-dev", "owner", "manager-admin"],
     tickets: ["owner-dev", "owner"]
   };
   var PAGE_ACCESS_KEY = "ybhq_page_access";

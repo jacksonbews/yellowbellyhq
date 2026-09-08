@@ -98,6 +98,7 @@ var Team = (function () {
       '  <input type="file" id="pf-photo" accept="image/*">' +
       '  <div class="hint" style="font-size:12px;color:#6b6b6b;margin-top:6px">JPG or PNG — it will be cropped to a circle.</div></div>' +
       "</div>" +
+      '<div class="field"><label>Name</label><input type="text" id="pf-name" maxlength="80"></div>' +
       '<div class="field-row">' +
       '  <div class="field"><label>Pronouns</label><input type="text" id="pf-pronouns" placeholder="e.g. she/her" maxlength="30"></div>' +
       '  <div class="field"><label>Title at Yellowbelly</label><input type="text" id="pf-title" maxlength="120"></div>' +
@@ -111,6 +112,7 @@ var Team = (function () {
       '    <div class="hint">Shown on your team card.</div></div>' +
       "</div>";
 
+    sh.body.querySelector("#pf-name").value = m.name || "";
     sh.body.querySelector("#pf-pronouns").value = m.pronouns || "";
     sh.body.querySelector("#pf-title").value = m.title || "";
     sh.body.querySelector("#pf-email").value = m.email || "";
@@ -175,6 +177,7 @@ var Team = (function () {
     var save = UI.el('<button class="btn btn-primary">Save profile</button>');
     save.onclick = function () {
       var patch = {
+        name: sh.body.querySelector("#pf-name").value.trim() || m.name,
         pronouns: sh.body.querySelector("#pf-pronouns").value.trim(),
         title: sh.body.querySelector("#pf-title").value.trim() || m.title,
         email: sh.body.querySelector("#pf-email").value.trim().toLowerCase(),

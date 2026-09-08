@@ -116,7 +116,7 @@ var TEAM_SEED = [
   { id: "jackson-bews",          name: "Jackson Bews",           title: "Founder",                                                            role: "owner-dev",     dept: "Leadership",       email: "jackson@yellowbellyphoto.com" },
   { id: "jalen-gregory-martin",  name: "Jalen Gregory Martin",   title: "Photographer",                                                       role: "team",          dept: "Photographer",      email: "" },
   { id: "kalene-jeans",          name: "Kalene Jeans",           title: "Photographer / Editor",                                              role: "team",          dept: "Photographer",      email: "" },
-  { id: "liv",                   name: "Liv",                    title: "Photographer / Studio Manager / Editor / 101 Producer / Creative Partnerships", role: "studio-admin", dept: "Studio Manager", email: "" },
+  { id: "liv",                   name: "Liv Ahmadi",             title: "Photographer / Studio Manager / Editor / 101 Producer / Creative Partnerships", role: "studio-admin", dept: "Studio Manager", email: "" },
   { id: "lulu-bews",             name: "Lulu Bews",              title: "Social Media",                                                       role: "team",          dept: "Social Media",     email: "" },
   { id: "matt-bovee",            name: "Matt Bovee",             title: "Customer Success Associate",                                         role: "team",          dept: "Customer Success Associate", email: "" },
   { id: "matthew-scott",         name: "Matthew Scott",          title: "Photographer / Studio Manager",                                      role: "studio-admin",  dept: "Studio Manager",           email: "" },
