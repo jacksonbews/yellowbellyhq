@@ -1368,6 +1368,50 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
 .ot-body-drophint { font-size: 12px; color: var(--grey); margin-top: 7px; }
 .ot-inline-sel { font-size: 13px; padding: 3px 6px; border: 1px solid var(--hair); border-radius: 6px; background: #fff; max-width: 180px; }
 
+/* ===== Two-pane sequence editor (edit left · live inbox preview right) ===== */
+.modal.ot-seq2-modal { max-width: 1180px; width: 94vw; }
+.ot-seq2-name { font-size: 20px; font-weight: 600; border: 0; border-bottom: 1px solid var(--hair); width: 100%; padding: 2px 0 8px; outline: 0; }
+.ot-seq2-name:focus { border-bottom-color: var(--fg); }
+.ot-seq2-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 16px 0; flex-wrap: wrap; }
+.ot-seq2-steps { display: flex; gap: 8px; flex-wrap: wrap; }
+.ot-stepchip { font-size: 12.5px; padding: 6px 13px; border-radius: 999px; border: 1px solid var(--hair); background: #fff; cursor: pointer; }
+.ot-stepchip.on { background: #1a2d05; color: #fff; border-color: #1a2d05; }
+.ot-stepadd { border-style: dashed; color: #2c4a0a; }
+.ot-seq2-when { font-size: 12.5px; color: #555; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ot-when-num { width: 54px; padding: 4px 6px; border: 1px solid var(--hair); border-radius: 6px; }
+.ot-when-only { color: #8a7500; background: #fbf6da; padding: 2px 9px; border-radius: 999px; }
+.ot-when-note { color: #757570; }
+.ot-seq2-when .ot-step-rm { margin-left: 6px; color: #b3261e; font-size: 12px; background: none; border: 0; cursor: pointer; }
+.ot-seq2-panes { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.ot-seq2-edit, .ot-seq2-preview { border: 1px solid var(--hair); border-radius: 12px; padding: 15px 17px; }
+.ot-seq2-preview { background: #f6f6f3; }
+.ot-seq2-pane-h { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #8a8a85; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ot-seq2-senders { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ot-seq2-as { font-size: 10.5px; color: #8a8a85; }
+.ot-sender-chip { font-size: 12px; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--hair); background: #fff; cursor: pointer; text-transform: none; letter-spacing: 0; }
+.ot-sender-chip.on { background: #1a2d05; color: #fff; border-color: #1a2d05; }
+.ot-seq2-lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #8a8a85; margin: 12px 0 4px; }
+.ot-seq2-lbl:first-child { margin-top: 0; }
+.ot-seq2-lbl-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ot-seq2-subj { width: 100%; border: 0; border-bottom: 1px solid var(--hair); padding: 6px 0; font-size: 15px; outline: 0; }
+.ot-seq2-subj:focus { border-bottom-color: var(--fg); }
+.ot-seq2-subj-ro { font-size: 14px; color: #555; padding: 6px 0; }
+.ot-seq2-copy { min-height: 260px; width: 100%; border: 1px solid var(--hair); border-radius: 8px; padding: 10px 12px; resize: vertical; line-height: 1.55; font-size: 15px; }
+.ot-mergebtns { display: flex; gap: 6px; flex-wrap: wrap; }
+.ot-mergebtn { font-size: 11px; color: #2c4a0a; background: #eaf1dd; border: 0; border-radius: 6px; padding: 3px 8px; cursor: pointer; }
+.ot-mergebtn:hover { background: #dce8c6; }
+.ot-prev-card { background: #fff; border: 1px solid var(--hair); border-radius: 10px; padding: 16px 18px; }
+.ot-prev-subject { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
+.ot-prev-mailhead { font-size: 12.5px; color: #555; border-bottom: 1px solid var(--hair-soft); padding-bottom: 10px; margin-bottom: 12px; }
+.ot-prev-addr { color: #9a9a94; }
+.ot-prev-to { color: #9a9a94; margin-top: 2px; }
+.ot-prev-body { font-size: 13.5px; color: #222; }
+.ot-prev-sig { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--hair-soft); font-size: 13px; color: #333; line-height: 1.5; }
+.ot-prev-sig-title { color: #8a8a85; }
+.ot-prev-sig-img { max-width: 180px; height: auto; margin-top: 8px; display: block; border-radius: 6px; }
+.ot-prev-hint { font-size: 12px; color: #8a7500; background: #fbf6da; border-radius: 8px; padding: 8px 11px; margin-top: 12px; }
+@media (max-width: 860px) { .ot-seq2-panes { grid-template-columns: 1fr; } .modal.ot-seq2-modal { width: 96vw; } }
+
 /* Templates & sequences — combined layout */
 .ot-getstarted { background: #f5f8ee; border: 1px solid #d8e3c4; border-radius: 14px; padding: 18px 20px 20px; }
 .ot-gs-eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: #1a2d05; }

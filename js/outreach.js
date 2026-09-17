@@ -859,7 +859,7 @@ var Outreach = (function () {
       var tpl = isInit ? template(step.templateId) : null;
       var sub = isInit ? 'uses <b>' + esc(tpl ? tpl.name : "—") + '</b>' : esc((step.copy || "").replace(/\n+/g, " ").slice(0, 96)) + '…';
       var card = UI.el('<button class="ot-flow-step"><span class="ot-flow-dot">' + (i + 1) + '</span><span class="ot-flow-card"><span class="ot-flow-t">' + (isInit ? "Initial email" : "Follow-up " + i) + '</span><span class="ot-flow-sub">' + sub + '</span></span><span class="ot-flow-edit">Edit</span></button>');
-      card.onclick = function () { if (isInit && tpl) { selTpl = tpl.id; openTemplate(tpl.id, main); } else openSequence(s.id, main); };
+      card.onclick = function () { openSequence(s.id, main, i); };
       flow.appendChild(card);
     });
     det.appendChild(flow);
@@ -974,43 +974,165 @@ var Outreach = (function () {
     sh.foot.appendChild(btn("Cancel", UI.closeModal, "")); sh.foot.appendChild(save);
   }
 
-  function openSequence(id, main) {
+  /* ---- sender / signature helpers for the sequence editor ---- */
+  // The three outreach senders you can preview & sign as.
+  function outreachSenders() {
+    var ids = ["hannah-mciver", "matthew-scott", "liv"], out = [];
+    ids.forEach(function (id) { var m = Store.member(id); if (m && out.indexOf(m) === -1) out.push(m); });
+    if (out.length < 3) {
+      var wants = [/hannah/i, /matt/i, /\b(liv|olivia)\b/i];
+      Store.team().forEach(function (m) {
+        if (out.indexOf(m) !== -1) return;
+        if (wants.some(function (re) { return re.test(m.name || ""); })) out.push(m);
+      });
+    }
+    return out.slice(0, 3);
+  }
+  function memberSigHtml(m) {
+    if (!m) return "";
+    var sig = m.emailSignature || {};
+    var block = sig.text
+      ? esc(sig.text).replace(/\n/g, "<br>")
+      : '<b>' + esc(m.name) + '</b>' + (m.title ? '<br><span class="ot-prev-sig-title">' + esc(m.title) + '</span>' : "") + '<br>Yellowbelly' + (m.email ? '<br>' + esc(m.email) : "");
+    return '<div class="ot-prev-sig">' + block + (sig.image ? '<div><img class="ot-prev-sig-img" src="' + sig.image + '" alt=""></div>' : "") + '</div>';
+  }
+  // a real contact of this audience to preview against, else a friendly placeholder
+  function previewRecipient(aud) {
+    var pool = allContacts().filter(function (c) { return c.type === aud; });
+    return pool.filter(function (x) { return x.status === "to-contact"; })[0] || pool[0] ||
+      { name: "", org: "the agency", jobTitle: "", email: "your-contact@example.com" };
+  }
+  // merge a body for preview, injecting the SELECTED sender's signature (token or auto-appended)
+  function previewEmailHtml(rawHtml, rc, sender) {
+    var hasToken = /\{\{\s*signature\s*\}\}/.test(rawHtml);
+    var sig = (sender && sender.emailSignature) || {};
+    var html = rawHtml.replace(/\{\{\s*signature\s*\}\}/g, esc(sig.text || "").replace(/\n/g, "<br>"));
+    html = mergeFields(html, rc);
+    if (hasToken && sig.image) html += '<img class="ot-prev-sig-img" src="' + sig.image + '" alt="signature">';
+    if (!hasToken) html += memberSigHtml(sender);
+    return html;
+  }
+  // insert a merge token at the caret of either a textarea or a contenteditable body
+  function insertToken(el, text) {
+    if (el && el.tagName === "TEXTAREA") {
+      var a = el.selectionStart != null ? el.selectionStart : el.value.length;
+      var b = el.selectionEnd != null ? el.selectionEnd : el.value.length;
+      el.value = el.value.slice(0, a) + text + el.value.slice(b);
+      el.focus(); el.selectionStart = el.selectionEnd = a + text.length;
+    } else if (el) { insertAtCursor(el, text); }
+    if (el) el.dispatchEvent(new Event("input"));
+  }
+  function mergeBtnsHtml() {
+    var toks = [["{{name}}", "First name"], ["{{organisation}}", "Company"], ["{{jobTitle}}", "Role"], ["{{signature}}", "Signature"]];
+    return '<span class="ot-mergebtns">' + toks.map(function (t) { return '<button type="button" class="ot-mergebtn" data-tok="' + t[0] + '">[' + t[1] + ']</button>'; }).join("") + '</span>';
+  }
+  function wireMergeBtns(host, bodyEl) { host.querySelectorAll(".ot-mergebtn").forEach(function (b) { b.onclick = function (e) { e.preventDefault(); insertToken(bodyEl, b.dataset.tok); }; }); }
+
+  /* Two-pane sequence editor: edit each email on the left, live inbox preview on the right. */
+  function openSequence(id, main, startStep) {
     var s = (id && typeof id === "object") ? id : sequence(id);
     if (!s) return;
-    var sh = UI.modalShell(s.name, { wide: true });
-    sh.modal.classList.add("ot-tpl-modal");
-    function draw() {
-      sh.body.innerHTML =
-        '<div class="ot-org-meta"><span class="ot-type ot-type-' + s.audience + '">' + esc(TYPES[s.audience]) + '</span></div>' +
-        '<div class="field"><label>Sequence name</label><input type="text" id="sq-name" value="' + esc(s.name) + '"></div>' +
-        '<div class="ot-steps"></div><button class="btn btn-sm btn-ghost" id="sq-add">+ Add follow-up</button>';
-      var stepsEl = sh.body.querySelector(".ot-steps");
-      s.steps.forEach(function (step, i) {
-        var stepEl = UI.el('<div class="ot-step"><div class="ot-step-dot">' + (i + 1) + '</div><div class="ot-step-body"></div></div>');
-        var sb = stepEl.querySelector(".ot-step-body");
-        if (i > 0) sb.appendChild(UI.el('<div class="ot-step-wait">Wait <input type="number" min="0" class="ot-wait" value="' + step.waitDays + '"> days, then send:</div>'));
-        if (step.type === "initial") {
-          var tpl = template(step.templateId);
-          sb.appendChild(UI.el('<div class="ot-step-title">Initial email</div><div class="ot-step-tpl">Uses template: <b>' + esc(tpl ? tpl.name : "—") + '</b></div>'));
-        } else {
-          sb.appendChild(UI.el('<div class="ot-step-title">Follow-up ' + i + '</div>'));
-          var ta = UI.el('<textarea class="ot-step-copy">' + esc(step.copy || "") + '</textarea>');
-          sb.appendChild(ta);
-          var rm = UI.el('<button class="ot-step-rm">Remove step</button>');
-          rm.onclick = function () { s.steps.splice(i, 1); draw(); };
-          sb.appendChild(rm);
-        }
-        var w = stepEl.querySelector(".ot-wait"); if (w) w.onchange = function () { step.waitDays = +w.value || 0; };
-        var cc = stepEl.querySelector(".ot-step-copy"); if (cc) cc.onchange = function () { step.copy = cc.value; };
-        stepsEl.appendChild(stepEl);
-      });
-      sh.body.querySelector("#sq-add").onclick = function () { s.steps.push({ type: "followup", waitDays: 5, copy: "Hi {{name}}, just following up…" }); draw(); };
+    var sq = JSON.parse(JSON.stringify(s));                 // work on a copy; Cancel discards
+    var t0 = template((sq.steps[0] || {}).templateId);
+    var tplWork = t0 ? JSON.parse(JSON.stringify(t0)) : null;
+    var senders = outreachSenders();
+    var me = Store.me();
+    var senderId = ((senders.filter(function (m) { return me && m.id === me.id; })[0]) || senders[0] || {}).id || "";
+    var active = Math.max(0, Math.min(startStep || 0, sq.steps.length - 1));
+    var rc = previewRecipient(sq.audience);
+
+    var sh = UI.modalShell(sq.name || "Sequence", { wide: true });
+    sh.modal.classList.add("ot-seq2-modal");
+    function activeSender() { return Store.member(senderId) || senders[0] || null; }
+
+    sh.body.innerHTML =
+      '<input type="text" id="sq-name" class="ot-seq2-name" value="' + esc(sq.name) + '" placeholder="Sequence name">' +
+      '<div class="ot-seq2-top"><div class="ot-seq2-steps"></div><div class="ot-seq2-when"></div></div>' +
+      '<div class="ot-seq2-panes">' +
+      '  <div class="ot-seq2-edit"><div class="ot-seq2-pane-h">Edit email</div><div class="ot-seq2-edit-body"></div></div>' +
+      '  <div class="ot-seq2-preview"><div class="ot-seq2-pane-h">Inbox preview — as <b>' + esc(rc.name || rc.org || "your contact") + '</b> receives it<span class="ot-seq2-senders"></span></div><div class="ot-seq2-preview-body"></div></div>' +
+      '</div>';
+    sh.body.querySelector("#sq-name").oninput = function (e) { sq.name = e.target.value; };
+
+    function drawSteps() {
+      var bar = sh.body.querySelector(".ot-seq2-steps");
+      bar.innerHTML = sq.steps.map(function (st, i) { return '<button class="ot-stepchip' + (i === active ? " on" : "") + '" data-i="' + i + '">' + (i === 0 ? "Initial" : "Follow-up " + i) + "</button>"; }).join("") +
+        '<button class="ot-stepchip ot-stepadd" id="stepadd">+ Add follow-up</button>';
+      bar.querySelectorAll(".ot-stepchip[data-i]").forEach(function (b) { b.onclick = function () { active = +b.dataset.i; drawAll(); }; });
+      bar.querySelector("#stepadd").onclick = function () { sq.steps.push({ type: "followup", waitDays: 3, copy: "Hi {{name}}, just following up on my note above — happy to work around you. Best, {{signature}}" }); active = sq.steps.length - 1; drawAll(); };
     }
-    draw();
-    var delS = UI.el('<button class="btn btn-danger">Delete</button>'); delS.onclick = function () { deleteSequence(s.id, main); };
+    function drawWhen() {
+      var host = sh.body.querySelector(".ot-seq2-when");
+      var step = sq.steps[active];
+      if (!step || step.type === "initial") { host.innerHTML = '<span class="ot-when-note">Sends first — the opening email.</span>'; return; }
+      host.innerHTML = 'Sends <input type="number" min="0" id="e-wait" class="ot-when-num" value="' + (step.waitDays || 0) + '"> business days after the previous step · <span class="ot-when-only">only if they haven’t replied</span>' +
+        '<button class="ot-step-rm" id="e-rmstep">Remove step</button>';
+      host.querySelector("#e-wait").onchange = function (e) { step.waitDays = +e.target.value || 0; };
+      host.querySelector("#e-rmstep").onclick = function () { sq.steps.splice(active, 1); if (active >= sq.steps.length) active = sq.steps.length - 1; drawAll(); };
+    }
+    function drawEditor() {
+      var host = sh.body.querySelector(".ot-seq2-edit-body");
+      var step = sq.steps[active];
+      if (!step) { host.innerHTML = ""; return; }
+      if (step.type === "initial") {
+        if (!tplWork) { host.innerHTML = '<div class="ot-md-empty">This sequence has no template linked yet. Create one on the Templates tab first.</div>'; return; }
+        host.innerHTML =
+          '<div class="ot-seq2-lbl">Subject</div><input class="ot-seq2-subj" id="e-subj" value="' + esc(tplWork.subject || "") + '">' +
+          '<div class="ot-seq2-lbl ot-seq2-lbl-row"><span>Body</span>' + mergeBtnsHtml() + "</div>" +
+          '<div id="e-body" class="ot-tpl-body-edit" contenteditable="true"></div>' +
+          '<div class="ot-body-drophint">Editing this updates the <b>' + esc(tplWork.name) + '</b> template. Drag or paste an image to place it inline.</div>';
+        var bodyEl = host.querySelector("#e-body");
+        bodyEl.innerHTML = bodyToHtml(tplWork);
+        wireBodyImages(bodyEl); wireMergeBtns(host, bodyEl);
+        bodyEl.addEventListener("input", function () { tplWork.bodyHtml = bodyEl.innerHTML; tplWork.body = bodyEl.innerText; drawPreview(); });
+        host.querySelector("#e-subj").addEventListener("input", function (e) { tplWork.subject = e.target.value; drawPreview(); });
+      } else {
+        host.innerHTML =
+          '<div class="ot-seq2-lbl">Subject</div><div class="ot-seq2-subj-ro">Re: ' + esc((tplWork && tplWork.subject) || "the opening email") + ' <span class="ot-muted">· threads onto the first email</span></div>' +
+          '<div class="ot-seq2-lbl ot-seq2-lbl-row"><span>Body</span>' + mergeBtnsHtml() + "</div>" +
+          '<textarea id="e-copy" class="ot-tpl-body-edit ot-seq2-copy">' + esc(step.copy || "") + "</textarea>";
+        var copyEl = host.querySelector("#e-copy");
+        wireMergeBtns(host, copyEl);
+        copyEl.addEventListener("input", function () { step.copy = copyEl.value; drawPreview(); });
+      }
+    }
+    function drawSenderBar() {
+      var bar = sh.body.querySelector(".ot-seq2-senders");
+      bar.innerHTML = '<span class="ot-seq2-as">Sign as</span>' + senders.map(function (m) { return '<button class="ot-sender-chip' + (m.id === senderId ? " on" : "") + '" data-id="' + m.id + '">' + esc((m.name || "").split(" ")[0]) + "</button>"; }).join("");
+      bar.querySelectorAll(".ot-sender-chip").forEach(function (b) { b.onclick = function (e) { e.stopPropagation(); senderId = b.dataset.id; drawSenderBar(); drawPreview(); }; });
+    }
+    function drawPreview() {
+      var host = sh.body.querySelector(".ot-seq2-preview-body");
+      var step = sq.steps[active];
+      if (!step) { host.innerHTML = ""; return; }
+      var isInit = step.type === "initial";
+      var subj = isInit ? ((tplWork && tplWork.subject) || "") : ("Re: " + ((tplWork && tplWork.subject) || ""));
+      var raw = isInit ? (tplWork ? bodyToHtml(tplWork) : "") : textToHtml(step.copy || "");
+      var sender = activeSender();
+      host.innerHTML =
+        '<div class="ot-prev-card">' +
+        '  <div class="ot-prev-subject">' + esc(mergeFields(subj, rc)) + "</div>" +
+        '  <div class="ot-prev-mailhead"><b>' + esc((sender && sender.name) || "You") + "</b> at Yellowbelly <span class=\"ot-prev-addr\">&lt;" + esc((sender && sender.email) || "") + "&gt;</span>" +
+        '    <div class="ot-prev-to">to ' + esc(rc.email || rc.name || "your contact") + "</div></div>" +
+        '  <div class="ot-email-body ot-prev-body">' + previewEmailHtml(raw, rc, sender) + "</div>" +
+        "</div>" +
+        (activeSender() && !(activeSender().emailSignature && (activeSender().emailSignature.text || activeSender().emailSignature.image))
+          ? '<div class="ot-prev-hint">' + esc((activeSender().name || "").split(" ")[0]) + ' hasn’t saved a full signature yet — they can add one (text + logo) in their profile, and it’ll show here.</div>' : "");
+    }
+    function drawAll() { drawSteps(); drawWhen(); drawEditor(); drawSenderBar(); drawPreview(); }
+    drawAll();
+
+    var delS = UI.el('<button class="btn btn-danger">Delete</button>'); delS.onclick = function () { deleteSequence(sq.id, main); };
     sh.foot.appendChild(delS); sh.foot.appendChild(UI.el('<span class="foot-spacer"></span>'));
     sh.foot.appendChild(btn("Cancel", UI.closeModal, ""));
-    sh.foot.appendChild(btn("Save sequence", function () { s.name = sh.body.querySelector("#sq-name").value; Store.saveOutreachSequence(s); UI.closeModal(); UI.toast("Sequence saved"); api.render(main); }, "primary"));
+    sh.foot.appendChild(btn("Save", function () {
+      sq.name = sh.body.querySelector("#sq-name").value;
+      if (tplWork && (tplWork.bodyHtml || "").length > 900000) { UI.toast("The first email is too large to save — try smaller images."); return; }
+      var chain = tplWork ? Promise.resolve(Store.saveOutreachTemplate(tplWork)) : Promise.resolve();
+      chain.then(function () { return Store.saveOutreachSequence(sq); })
+        .then(function () { UI.closeModal(); UI.toast("Sequence saved"); api.render(main); })
+        .catch(function () { UI.toast("Couldn't save — the first email may be too large. Try smaller images."); });
+    }, "primary"));
   }
 
   /* send flow — preview only, never sends */
