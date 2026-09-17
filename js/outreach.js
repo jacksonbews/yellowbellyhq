@@ -101,6 +101,10 @@ var Outreach = (function () {
 
   /* ---------- helpers ---------- */
   function esc(s) { return UI.esc(s); }
+  /* studio cities (London / New York / Los Angeles) for tagging + filtering contacts */
+  function cityList() { return Store.cities(); }
+  function cityLabel(id) { return id ? UI.cityLabel(id) : ""; }
+  function cityOptions(selId) { return cityList().map(function (ct) { return '<option value="' + ct.id + '"' + (selId === ct.id ? " selected" : "") + ">" + esc(ct.label) + "</option>"; }).join(""); }
   function allContacts() { return Store.outreachContacts(); }   // shared, live from Firestore
   function contact(id) { return allContacts().filter(function (c) { return c.id === id; })[0]; }
   function siblings(c) { return allContacts().filter(function (x) { return x.org === c.org && x.id !== c.id; }); }
@@ -189,7 +193,7 @@ var Outreach = (function () {
   }
 
   /* ---------- state ---------- */
-  var fCampaign = "all", fType = "all", fOwner = "all";
+  var fCampaign = "all", fType = "all", fOwner = "all", fCity = "all";
   var tab = "pipeline";
   var cSearch = "", colFilters = {}, sortKey = null, sortDir = 1;
   var tsLib = "sequences", selSeq = null, selTpl = null;   // Templates & sequences: active library + selection
@@ -426,6 +430,10 @@ var Outreach = (function () {
     var search = UI.el('<input class="ot-search" placeholder="Search organisation, person, email…">');
     search.value = cSearch; search.oninput = function () { cSearch = search.value; repaint(); };
     bar.appendChild(search);
+    var citySel = UI.el('<select class="filter-select ot-sel" title="Filter by city"><option value="all">All cities</option>' + cityOptions(fCity === "all" ? "" : fCity) + "</select>");
+    citySel.value = fCity;
+    citySel.onchange = function () { fCity = citySel.value; repaint(); };
+    bar.appendChild(citySel);
     bar.appendChild(UI.el('<span class="ot-bar-spacer"></span>'));
     bar.appendChild(UI.el('<span class="ot-hint-inline">Click a column heading to filter or sort</span>'));
     var exportBtn = btn("⭳ Export", function () { exportContacts(); });
@@ -480,7 +488,7 @@ var Outreach = (function () {
       var tb = wrap.querySelector("tbody");
       rows.forEach(function (c) {
         var tds = '<td class="ot-td-check"><input type="checkbox"></td>' + cols().map(function (cfg) {
-          if (cfg.key === "org") return '<td class="ot-cell-name">' + esc(c.org) + '<span class="ot-region">' + esc(c.region) + "</span></td>";
+          if (cfg.key === "org") return '<td class="ot-cell-name">' + esc(c.org) + '<span class="ot-region">' + esc([cityLabel(c.city), c.region].filter(Boolean).join(" · ")) + "</span></td>";
           if (cfg.key === "type") return '<td><span class="ot-type ot-type-' + c.type + '">' + esc(TYPES[c.type]) + "</span></td>";
           if (cfg.key === "name") return "<td>" + (c.name ? esc(c.name) + (c.jobTitle ? '<span class="ot-region">' + esc(c.jobTitle) + "</span>" : "") : '<span class="ot-muted">— unknown —</span>') + "</td>";
           if (cfg.key === "email") return '<td class="ot-email">' + esc(c.email) + "</td>";
@@ -535,6 +543,7 @@ var Outreach = (function () {
   }
   function matchContact(c) {
     var q = cSearch.trim().toLowerCase();
+    if (fCity !== "all" && c.city !== fCity) return false;
     if (q) { var hay = [c.org, c.name, c.email, c.jobTitle, c.region, c.owner].join(" ").toLowerCase(); if (hay.indexOf(q) === -1) return false; }
     var ok = true;
     Object.keys(colFilters).forEach(function (k) { var cfg = CCOLS.filter(function (c2) { return c2.key === k; })[0]; if (cfg && String(cfg.val(c)) !== String(colFilters[k])) ok = false; });
@@ -588,7 +597,9 @@ var Outreach = (function () {
       '<div class="ot-org-meta"><span class="ot-type ot-type-' + c.type + '">' + esc(TYPES[c.type]) + "</span>" + statusChip(c.status) +
       (canSeeOwner() ? '<span class="ot-chip-plain">Owner: ' + esc(c.owner) + "</span>" : "") + '<span class="ot-chip-plain">' + esc(c.campaign) + "</span></div>" +
       '<div class="ot-detail-grid">' +
-      field("Organisation", c.org) + field("Region", c.region) +
+      field("Organisation", c.org) +
+      '<div class="ot-fld"><span class="ot-fld-l">City</span><span class="ot-fld-v"><select id="oc-city" class="ot-inline-sel"><option value="">— none —</option>' + cityOptions(c.city) + '</select></span></div>' +
+      field("Region", c.region) +
       field("Name", c.name || '<span class="ot-muted">unknown</span>', true) + field("Job title", c.jobTitle || "—") +
       field("Email", '<span class="ot-email">' + esc(c.email) + "</span>", true) + field("Phone", c.phone || "—") +
       field("Last contacted", c.last ? fmtDate(c.last) : "—") + field("Next action", c.next || "—") + "</div>" +
@@ -596,6 +607,8 @@ var Outreach = (function () {
       '<div class="ot-org-sec"><div class="ot-sec-head"><span>Notes</span></div><div class="ot-notes">' + (c.notes ? esc(c.notes) : '<span class="ot-muted">No notes yet.</span>') + "</div></div>" +
       '<div class="ot-org-sec"><div class="ot-sec-head"><span>Others at ' + esc(c.org) + " (" + others.length + ')</span><button class="ot-find" id="ot-find">✨ Find contacts</button></div><div id="ot-find-panel"></div><div class="ot-people"></div></div>' + histHtml;
     sh.body.querySelectorAll(".ot-tl-sent").forEach(function (b) { b.onclick = function () { openEmailPopup(c, hist[+b.dataset.h]); }; });
+    var ocCity = sh.body.querySelector("#oc-city");
+    if (ocCity) ocCity.onchange = function () { c.city = ocCity.value; persistContacts(c); UI.toast(ocCity.value ? "Filed under " + cityLabel(ocCity.value) : "City cleared"); };
     var pl = sh.body.querySelector(".ot-people");
     others.forEach(function (o) { pl.appendChild(UI.el('<div class="ot-person"><div class="ot-person-main"><span class="ot-person-name">' + esc(o.name || "Unknown") + '</span><span class="ot-person-title">' + esc(o.jobTitle || "") + "</span>" + statusChip(o.status) + '</div><div class="ot-person-email">' + esc(o.email) + "</div></div>")); });
     if (!others.length) pl.appendChild(UI.el('<div class="ot-muted" style="padding:6px 0">No other contacts at this organisation yet.</div>'));
@@ -614,12 +627,13 @@ var Outreach = (function () {
   function openEmailPopup(c, ev) {
     if (!ev) return;
     var rawBody = ev.body || ev.copy || "";
+    var bodyRendered = ev.bodyHtml ? mergeFields(ev.bodyHtml, c) : esc(mergeFields(rawBody, c));
     var subject = ev.subject ? esc(mergeFields(ev.subject, c)) : "";
     var ov = UI.el('<div class="modal-overlay ot-confirm-over"><div class="modal wide"><div class="modal-head"><div class="modal-title">' + esc((ev.step || "Email") + " · " + fmtDate(ev.on)) + '</div><button class="modal-close" aria-label="Close">×</button></div><div class="modal-body">' +
       '<div class="ot-org-meta"><span class="ot-chip-plain">via ' + esc(ev.seqName || "—") + '</span></div>' +
       '<div class="ot-email"><div class="ot-email-h"><b>To:</b> ' + esc(c.email) + '</div>' +
       (subject ? '<div class="ot-email-h"><b>Subject:</b> ' + subject + '</div>' : '') +
-      '<div class="ot-email-body">' + esc(mergeFields(rawBody, c)) + sigImgHtml(rawBody) + '</div></div>' +
+      '<div class="ot-email-body">' + bodyRendered + sigImgHtml(rawBody) + '</div></div>' +
       '<div class="ot-muted" style="font-size:12px;margin-top:10px">This is how the email read for ' + esc(c.name || c.org) + ' when it went out.</div>' +
       '</div><div class="modal-foot"></div></div></div>');
     document.body.appendChild(ov);
@@ -643,7 +657,8 @@ var Outreach = (function () {
     var sh = UI.modalShell("Add contact");
     sh.body.innerHTML =
       '<div class="field"><label>Organisation</label><input id="a-org" placeholder="e.g. Guildford School of Acting"></div>' +
-      '<div class="field"><label>Type</label><select id="a-type"><option value="school">School</option><option value="casting">Casting Director</option><option value="agent">Agent</option></select></div>' +
+      '<div class="field-row"><div class="field"><label>Type</label><select id="a-type"><option value="school">School</option><option value="casting">Casting Director</option><option value="agent">Agent</option></select></div>' +
+      '<div class="field"><label>City</label><select id="a-city">' + cityOptions((cityList()[0] || {}).id) + '</select></div></div>' +
       '<div class="field"><label>Email</label><input id="a-email" placeholder="name@school.ac.uk"></div>' +
       '<div class="field-row"><div class="field"><label>Contact name <span class="ot-opt">(optional)</span></label><input id="a-name" placeholder="Often unknown — leave blank"></div>' +
       '<div class="field"><label>Job title / dept</label><input id="a-title" placeholder="e.g. Head of Musical Theatre"></div></div>' +
@@ -653,7 +668,7 @@ var Outreach = (function () {
     var save = btn("Add contact", function () {
       var org = sh.body.querySelector("#a-org").value.trim(), email = sh.body.querySelector("#a-email").value.trim();
       if (!org && !email) { sh.body.querySelector("#a-org").focus(); return; }
-      var nc = { id: "n" + Date.now(), org: org, type: sh.body.querySelector("#a-type").value, region: sh.body.querySelector("#a-region").value.trim(), website: "", name: sh.body.querySelector("#a-name").value.trim(), jobTitle: sh.body.querySelector("#a-title").value.trim(), email: email, phone: sh.body.querySelector("#a-phone").value.trim(), owner: "Hannah", status: "to-contact", campaign: allCampaigns()[0], last: "", next: "Send intro email", notes: sh.body.querySelector("#a-notes").value.trim(), history: [] };
+      var nc = { id: "n" + Date.now(), org: org, type: sh.body.querySelector("#a-type").value, city: sh.body.querySelector("#a-city").value, region: sh.body.querySelector("#a-region").value.trim(), website: "", name: sh.body.querySelector("#a-name").value.trim(), jobTitle: sh.body.querySelector("#a-title").value.trim(), email: email, phone: sh.body.querySelector("#a-phone").value.trim(), owner: "Hannah", status: "to-contact", campaign: allCampaigns()[0], last: "", next: "Send intro email", notes: sh.body.querySelector("#a-notes").value.trim(), history: [] };
       UI.closeModal(); UI.toast((org || email) + " added to To contact"); persistContacts(nc); api.render(main);
     }, "primary");
     sh.foot.appendChild(btn("Cancel", UI.closeModal, "")); sh.foot.appendChild(save);
@@ -666,10 +681,10 @@ var Outreach = (function () {
     function draw() {
       if (step === 1) {
         sh.body.innerHTML = '<p class="ot-imp-intro">Paste your existing sheet (or a few rows) — headers on the first line. These become a batch of <b>To contact</b> records for the campaign you choose.</p>' +
-          '<div class="field" style="max-width:320px"><label>Add to campaign</label>' + campaignSelectHtml("imp-camp") + "</div><textarea id=\"imp-text\" class=\"ot-imp-text\"></textarea>";
+          '<div class="field-row" style="max-width:520px"><div class="field"><label>Add to campaign</label>' + campaignSelectHtml("imp-camp") + '</div><div class="field"><label>City</label><select id="imp-city">' + cityOptions(window._impCity || (cityList()[0] || {}).id) + "</select></div></div><textarea id=\"imp-text\" class=\"ot-imp-text\"></textarea>";
         sh.body.querySelector("#imp-text").value = SAMPLE;
         sh.foot.innerHTML = ""; sh.foot.appendChild(btn("Cancel", UI.closeModal, ""));
-        sh.foot.appendChild(btn("Next: map columns", function () { window._impText = sh.body.querySelector("#imp-text").value; window._impCamp = resolveCampaign(sh.body.querySelector("#imp-camp")); step = 2; draw(); }, "primary"));
+        sh.foot.appendChild(btn("Next: map columns", function () { window._impText = sh.body.querySelector("#imp-text").value; window._impCamp = resolveCampaign(sh.body.querySelector("#imp-camp")); window._impCity = sh.body.querySelector("#imp-city").value; step = 2; draw(); }, "primary"));
       } else if (step === 2) {
         var lines = (window._impText || "").trim().split(/\n/), headers = splitCsv(lines[0] || "");
         var targets = ["— skip —", "Organisation", "Email(s)", "Contact name", "Job title", "Outreach date", "Phone", "Region", "Notes"];
@@ -686,7 +701,7 @@ var Outreach = (function () {
         sh.foot.innerHTML = ""; sh.foot.appendChild(btn("Back", function () { step = 2; draw(); }, ""));
         sh.foot.appendChild(btn("Import " + total + " contacts", function () {
           var imported = [];
-          parsed.forEach(function (o) { o.emails.forEach(function (em) { var ic = { id: "i" + Date.now() + Math.random().toString(36).slice(2, 5), org: o.name, type: "school", region: o.region || "", website: "", name: "", jobTitle: "", email: em, phone: "", owner: "Hannah", status: "to-contact", campaign: window._impCamp, last: "", next: "Send intro email", notes: o.notes || "", history: [] }; imported.push(ic); }); });
+          parsed.forEach(function (o) { o.emails.forEach(function (em) { var ic = { id: "i" + Date.now() + Math.random().toString(36).slice(2, 5), org: o.name, type: "school", city: window._impCity || "", region: o.region || "", website: "", name: "", jobTitle: "", email: em, phone: "", owner: "Hannah", status: "to-contact", campaign: window._impCamp, last: "", next: "Send intro email", notes: o.notes || "", history: [] }; imported.push(ic); }); });
           UI.closeModal(); UI.toast(total + " contacts imported to To contact"); persistContacts(imported); api.render(main);
         }, "primary"));
       }
@@ -705,11 +720,65 @@ var Outreach = (function () {
   function mergeFields(text, c) { return String(text).replace(/\{\{\s*name\s*\}\}/g, c.name || "there").replace(/\{\{\s*organisation\s*\}\}/g, c.org).replace(/\{\{\s*jobTitle\s*\}\}/g, c.jobTitle || "the team").replace(/\{\{\s*signature\s*\}\}/g, meSig().text || ""); }
   /* the signature image (if any) renders after the text, but only when the body actually uses {{signature}} */
   function sigImgHtml(bodyText) { var sig = meSig(); return (sig.image && /\{\{\s*signature\s*\}\}/.test(String(bodyText))) ? '<img class="ot-sig-img" src="' + sig.image + '" alt="signature">' : ""; }
-  function insertAtCursor(ta, text) {
-    var start = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
-    var end = ta.selectionEnd != null ? ta.selectionEnd : ta.value.length;
-    ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
-    ta.focus(); ta.selectionStart = ta.selectionEnd = start + text.length;
+  /* ---- rich body (contenteditable) helpers: text/HTML, merge, inline images ---- */
+  function textToHtml(s) { return esc(String(s || "")).replace(/\n/g, "<br>"); }
+  function bodyToHtml(t) { return (t && t.bodyHtml) ? t.bodyHtml : textToHtml((t && t.body) || ""); }
+  /* body rendered for a contact: merge fields applied, signature image appended if used */
+  function renderedBody(t, c) {
+    var html = bodyToHtml(t);
+    if (c) html = mergeFields(html, c);
+    return html + sigImgHtml((t && t.body) || (t && t.bodyHtml) || "");
+  }
+  function caretRangeFromPoint(x, y) {
+    if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+    if (document.caretPositionFromPoint) { var p = document.caretPositionFromPoint(x, y); if (p) { var r = document.createRange(); r.setStart(p.offsetNode, p.offset); r.collapse(true); return r; } }
+    return null;
+  }
+  function insertNodeInEditor(el, node, pt) {
+    el.focus();
+    var sel = window.getSelection(), range = null;
+    if (pt) range = caretRangeFromPoint(pt.x, pt.y);
+    if (!range || !el.contains(range.startContainer)) {
+      if (sel && sel.rangeCount && el.contains(sel.anchorNode)) range = sel.getRangeAt(0);
+      else { range = document.createRange(); range.selectNodeContents(el); range.collapse(false); }
+    }
+    range.deleteContents();
+    range.insertNode(node);
+    range.setStartAfter(node); range.collapse(true);
+    if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+  }
+  // insert a plain-text token (merge field) at the caret of a contenteditable body
+  function insertAtCursor(el, text) { insertNodeInEditor(el, document.createTextNode(text)); }
+  function insertImageInEditor(el, dataUrl, pt) {
+    var img = document.createElement("img");
+    img.src = dataUrl; img.className = "ot-body-img"; img.alt = "";
+    insertNodeInEditor(el, img, pt);
+  }
+  function imageFileFrom(dt) {
+    if (!dt) return null;
+    if (dt.files && dt.files.length) { for (var i = 0; i < dt.files.length; i++) { if (/^image\//.test(dt.files[i].type)) return dt.files[i]; } }
+    if (dt.items && dt.items.length) { for (var j = 0; j < dt.items.length; j++) { var it = dt.items[j]; if (it.kind === "file" && /^image\//.test(it.type)) return it.getAsFile(); } }
+    return null;
+  }
+  // let a contenteditable body accept dragged / pasted images, placed where dropped
+  function wireBodyImages(el) {
+    el.addEventListener("dragover", function (e) {
+      var t = e.dataTransfer && e.dataTransfer.types;
+      if (t && (Array.prototype.indexOf.call(t, "Files") !== -1)) { e.preventDefault(); el.classList.add("ot-drop"); }
+    });
+    el.addEventListener("dragleave", function (e) { if (e.target === el) el.classList.remove("ot-drop"); });
+    el.addEventListener("drop", function (e) {
+      el.classList.remove("ot-drop");
+      var f = imageFileFrom(e.dataTransfer); if (!f) return;
+      e.preventDefault();
+      var pt = { x: e.clientX, y: e.clientY };
+      UI.readImageScaled(f, 900).then(function (url) { insertImageInEditor(el, url, pt); }).catch(function () { UI.toast("Couldn't read that image"); });
+    });
+    el.addEventListener("paste", function (e) {
+      var f = imageFileFrom(e.clipboardData); if (!f) return;
+      e.preventDefault();
+      UI.readImageScaled(f, 900).then(function (url) { insertImageInEditor(el, url); }).catch(function () { UI.toast("Couldn't read that image"); });
+    });
   }
   function openInsertMenu(btnEl, ta) {
     closeMenus();
@@ -826,7 +895,7 @@ var Outreach = (function () {
     det.appendChild(UI.el(
       '<div class="ot-tv">' +
       '<div class="ot-tv-label">Subject</div><div class="ot-tv-subj">' + esc(t.subject) + '</div>' +
-      '<div class="ot-tv-label">Body</div><div class="ot-tv-body">' + esc(t.body).replace(/\n/g, "<br>") + '</div>' +
+      '<div class="ot-tv-label">Body</div><div class="ot-tv-body">' + bodyToHtml(t) + '</div>' +
       '<div class="ot-tv-merge">Merge fields: <code>{{name}}</code> <code>{{organisation}}</code> <code>{{jobTitle}}</code> — filled in per contact when you send.</div>' +
       '<div class="ot-tv-used">' + (usedIn.length ? 'Used in <b>' + usedIn.map(function (s) { return esc(s.name); }).join(", ") + '</b>' : 'Not used in any sequence yet.') + '</div>' +
       '</div>'
@@ -883,11 +952,23 @@ var Outreach = (function () {
       '<div class="ot-org-meta"><span class="ot-type ot-type-' + t.audience + '">' + esc(TYPES[t.audience]) + '</span></div>' +
       '<div class="field"><label>Template name</label><input type="text" id="tp-name" value="' + esc(t.name) + '"></div>' +
       '<div class="field"><label>Subject</label><input type="text" id="tp-subj" value="' + esc(t.subject) + '"></div>' +
-      '<div class="field"><div class="ot-body-label"><label>Body</label><button type="button" class="ot-insert-btn" id="tp-insert">Insert <span class="ot-insert-caret">▾</span></button></div><textarea id="tp-body" class="ot-tpl-body-edit">' + esc(t.body) + '</textarea></div>' +
+      '<div class="field"><div class="ot-body-label"><label>Body</label><button type="button" class="ot-insert-btn" id="tp-insert">Insert <span class="ot-insert-caret">▾</span></button></div><div id="tp-body" class="ot-tpl-body-edit" contenteditable="true"></div><div class="ot-body-drophint">Drag an image straight into the message — or paste one — to place it inline.</div></div>' +
       '<div class="ot-merge">Merge fields: <code>{{name}}</code> <code>{{organisation}}</code> <code>{{jobTitle}}</code> · your <code>{{signature}}</code> — all filled in when you send.</div>';
     var bodyTa = sh.body.querySelector("#tp-body");
+    bodyTa.innerHTML = bodyToHtml(t);
+    wireBodyImages(bodyTa);
     sh.body.querySelector("#tp-insert").onclick = function (e) { e.stopPropagation(); openInsertMenu(sh.body.querySelector("#tp-insert"), bodyTa); };
-    var save = btn("Save template", function () { t.name = sh.body.querySelector("#tp-name").value; t.subject = sh.body.querySelector("#tp-subj").value; t.body = sh.body.querySelector("#tp-body").value; Store.saveOutreachTemplate(t); UI.closeModal(); UI.toast("Template saved"); api.render(main); }, "primary");
+    var save = btn("Save template", function () {
+      var html = bodyTa.innerHTML;
+      if (html.length > 900000) { UI.toast("This template is too large to save — try fewer or smaller images."); return; }
+      t.name = sh.body.querySelector("#tp-name").value;
+      t.subject = sh.body.querySelector("#tp-subj").value;
+      t.bodyHtml = html;
+      t.body = bodyTa.innerText;   // plain-text fallback (also carries {{merge}} tokens)
+      Promise.resolve(Store.saveOutreachTemplate(t)).then(function () {
+        UI.closeModal(); UI.toast("Template saved"); api.render(main);
+      }).catch(function () { UI.toast("Couldn't save — the template may be too large. Try smaller images."); });
+    }, "primary");
     var delT = UI.el('<button class="btn btn-danger">Delete</button>'); delT.onclick = function () { deleteTemplate(t.id, main); };
     sh.foot.appendChild(delT); sh.foot.appendChild(UI.el('<span class="foot-spacer"></span>'));
     sh.foot.appendChild(btn("Cancel", UI.closeModal, "")); sh.foot.appendChild(save);
@@ -968,7 +1049,7 @@ var Outreach = (function () {
         var initial = template(s.steps[0].templateId);
         sh.body.innerHTML =
           '<div class="ot-send-prevbar">Previewing for <select id="prev-sel">' + recs.map(function (r, i) { return '<option value="' + i + '"' + (i === st.previewIdx ? " selected" : "") + '>' + esc((r.name || r.email) + " — " + r.org) + '</option>'; }).join("") + '</select> · <b>' + recs.length + '</b> recipients, each personalised.</div>' +
-          '<div class="ot-email"><div class="ot-email-h"><b>To:</b> ' + esc(c.email) + '</div><div class="ot-email-h"><b>Subject:</b> ' + esc(mergeFields(initial.subject, c)) + '</div><div class="ot-email-body">' + esc(mergeFields(initial.body, c)) + sigImgHtml(initial.body) + '</div></div>' +
+          '<div class="ot-email"><div class="ot-email-h"><b>To:</b> ' + esc(c.email) + '</div><div class="ot-email-h"><b>Subject:</b> ' + esc(mergeFields(initial.subject, c)) + '</div><div class="ot-email-body">' + renderedBody(initial, c) + '</div></div>' +
           '<div class="ot-sec2-head" style="margin-top:16px"><h3>Then, if no reply</h3></div><div class="ot-fups"></div>';
         var fw = sh.body.querySelector(".ot-fups");
         s.steps.slice(1).forEach(function (step) { fw.appendChild(UI.el('<div class="ot-fup"><div class="ot-fup-when">+' + step.waitDays + ' days</div><div class="ot-email-body ot-fup-body">' + esc(mergeFields(step.copy || "", c)) + sigImgHtml(step.copy || "") + '</div></div>')); });
@@ -986,7 +1067,7 @@ var Outreach = (function () {
           var sq = sequence(st.seqId), initTpl = sq ? template(sq.steps[0].templateId) : null;
           recs.forEach(function (c) {
             c.status = "contacted"; c.last = TODAY; c.next = "Awaiting reply";
-            if (sq && initTpl) (c.history = c.history || []).push({ on: TODAY, kind: "sent", seqId: sq.id, seqName: sq.name, step: "Initial email", templateId: initTpl.id, subject: initTpl.subject, body: initTpl.body });
+            if (sq && initTpl) (c.history = c.history || []).push({ on: TODAY, kind: "sent", seqId: sq.id, seqName: sq.name, step: "Initial email", templateId: initTpl.id, subject: initTpl.subject, body: initTpl.body, bodyHtml: initTpl.bodyHtml || "" });
           });
           UI.closeModal(); UI.toast(recs.length + " moved to Contacted (nothing was emailed)"); persistContacts(recs); api.render(main);
         }, "primary"));

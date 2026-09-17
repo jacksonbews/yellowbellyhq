@@ -1347,6 +1347,26 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
 .ot-tpl-body-edit { min-height: 210px; line-height: 1.55; }
 .modal.ot-tpl-modal { max-width: 960px; }
 .ot-tpl-modal .ot-tpl-body-edit { min-height: 360px; }
+/* rich body editor (contenteditable) — matches the textarea look, holds inline images */
+.ot-tpl-body-edit[contenteditable] {
+  border: 0; border-bottom: 1px solid var(--hair);
+  padding: 8px 0; outline: 0; font-size: 15px;
+  overflow-y: auto; max-height: 52vh; word-wrap: break-word;
+  transition: border-color .4s var(--ease), background .15s, box-shadow .15s;
+}
+.ot-tpl-body-edit[contenteditable]:focus { border-bottom-color: var(--fg); }
+.ot-tpl-body-edit[contenteditable].ot-drop {
+  background: #f5f8ee; border-bottom-color: #cfe0a8;
+  box-shadow: inset 0 0 0 2px #cfe0a8; border-radius: 8px;
+}
+.ot-tpl-body-edit .ot-body-img,
+.ot-email-body .ot-body-img,
+.ot-tv-body .ot-body-img {
+  display: inline-block; max-width: 100%; height: auto;
+  border-radius: 8px; margin: 6px 0; vertical-align: bottom;
+}
+.ot-body-drophint { font-size: 12px; color: var(--grey); margin-top: 7px; }
+.ot-inline-sel { font-size: 13px; padding: 3px 6px; border: 1px solid var(--hair); border-radius: 6px; background: #fff; max-width: 180px; }
 
 /* Templates & sequences — combined layout */
 .ot-getstarted { background: #f5f8ee; border: 1px solid #d8e3c4; border-radius: 14px; padding: 18px 20px 20px; }
