@@ -847,9 +847,11 @@ var Outreach = (function () {
     var head = UI.el('<div class="ot-md-head"><div><div class="ot-md-title">' + esc(s.name) + '</div><div class="ot-md-meta">' + s.steps.length + ' email' + (s.steps.length > 1 ? "s" : "") + ' · sent to ' + esc(TYPES[s.audience]) + 's in To contact</div></div><div class="ot-md-acts"></div></div>');
     var runB = btn("Run this sequence", function () { openSend(main); }, "primary"); runB.classList.add("btn-sm");
     var edB = btn("Edit", function () { openSequence(s.id, main); }, ""); edB.classList.add("btn-sm");
+    var testB = btn("Test this sequence", function () { openTestSequence(s); }, ""); testB.classList.add("btn-sm");
     var delB = UI.el('<button class="btn btn-sm btn-danger">Delete</button>'); delB.onclick = function () { deleteSequence(s.id, main); };
     head.querySelector(".ot-md-acts").appendChild(delB);
     head.querySelector(".ot-md-acts").appendChild(edB);
+    head.querySelector(".ot-md-acts").appendChild(testB);
     head.querySelector(".ot-md-acts").appendChild(runB);
     det.appendChild(head);
     var flow = UI.el('<div class="ot-flow"></div>');
@@ -1133,6 +1135,55 @@ var Outreach = (function () {
         .then(function () { UI.closeModal(); UI.toast("Sequence saved"); api.render(main); })
         .catch(function () { UI.toast("Couldn't save — the first email may be too large. Try smaller images."); });
     }, "primary"));
+  }
+
+  /* Test a sequence: compose the opening email, merged + signed, and open it in
+     Gmail (or the default mail app) ready to send. The app has no send backend of
+     its own yet, so a real test goes out from your own inbox. */
+  function testBodyText(tpl, rc, sender) {
+    var raw = tpl.body || "";
+    if (!raw && tpl.bodyHtml) { var d = document.createElement("div"); d.innerHTML = tpl.bodyHtml; raw = d.innerText; }
+    var hasToken = /\{\{\s*signature\s*\}\}/.test(raw);
+    var sig = (sender && sender.emailSignature && sender.emailSignature.text) || "";
+    var sigFallback = sender ? ((sender.name || "") + (sender.title ? "\n" + sender.title : "") + "\nYellowbelly") : "";
+    var text = raw
+      .replace(/\{\{\s*signature\s*\}\}/g, sig || sigFallback)
+      .replace(/\{\{\s*name\s*\}\}/g, rc.name || "there")
+      .replace(/\{\{\s*organisation\s*\}\}/g, rc.org || "")
+      .replace(/\{\{\s*jobTitle\s*\}\}/g, rc.jobTitle || "the team");
+    if (!hasToken) text += "\n\n" + (sig || sigFallback);
+    return text;
+  }
+  function openTestSequence(s) {
+    var me = Store.me();
+    var tpl = template((s.steps[0] || {}).templateId);
+    var sh = UI.modalShell("Test this sequence");
+    sh.body.innerHTML =
+      '<p class="ot-imp-intro">Send yourself (or anyone) the opening email — <b>' + esc(s.name) + '</b> — to check it lands and reads right. It opens in Gmail, pre-filled and ready to send from your own inbox.</p>' +
+      '<div class="field"><label>Send test to</label><input type="email" id="ts-email" placeholder="you@yellowbellyphoto.com" value="' + esc((me && me.email) || "") + '"></div>' +
+      '<div class="ot-hint-box">Merge fields are filled with a sample contact and it’s signed as you. This quick test sends just the opening email as plain text — inline images and the follow-up aren’t included — so you can check the wording, links and that it arrives.</div>';
+    function compose() {
+      var to = (sh.body.querySelector("#ts-email").value || "").trim();
+      if (!to || to.indexOf("@") === -1) { sh.body.querySelector("#ts-email").focus(); return null; }
+      if (!tpl) { UI.toast("This sequence has no opening email yet"); return null; }
+      var rc = previewRecipient(s.audience);
+      return { to: to, subject: mergeFields(tpl.subject || "", rc), body: testBodyText(tpl, rc, me) };
+    }
+    var mailtoBtn = UI.el('<button class="btn btn-sm btn-ghost">Use my default mail app</button>');
+    mailtoBtn.onclick = function () {
+      var m = compose(); if (!m) return;
+      window.location.href = "mailto:" + encodeURIComponent(m.to) + "?subject=" + encodeURIComponent(m.subject) + "&body=" + encodeURIComponent(m.body);
+      UI.closeModal();
+    };
+    var gmailBtn = btn("Open test in Gmail", function () {
+      var m = compose(); if (!m) return;
+      window.open("https://mail.google.com/mail/?view=cm&fs=1&to=" + encodeURIComponent(m.to) + "&su=" + encodeURIComponent(m.subject) + "&body=" + encodeURIComponent(m.body), "_blank", "noopener");
+      UI.closeModal();
+      UI.toast("Opened a test in Gmail — press Send there to fire it off");
+    }, "primary");
+    sh.foot.appendChild(btn("Cancel", UI.closeModal, ""));
+    sh.foot.appendChild(mailtoBtn);
+    sh.foot.appendChild(gmailBtn);
   }
 
   /* send flow — preview only, never sends */
