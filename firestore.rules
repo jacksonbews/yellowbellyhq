@@ -170,6 +170,9 @@ service cloud.firestore {
     match /outreachConfig/{id} {
       allow read, write: if isOutreachUser();
     }
+    match /outreachGroups/{id} {
+      allow read, write: if isOutreachUser();
+    }
 
     match /docs/{id} {
       // Per-file visibility ("Who can see") is enforced at the database level:

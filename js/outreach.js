@@ -500,6 +500,8 @@ var Outreach = (function () {
   function renderContacts(body, main) {
     var selected = {};       // contact id -> true (survives filter/repaint)
     var lastRows = [];       // the rows currently shown (after search + filters + sort)
+    var groupView = null;    // when set, only show that group's contacts
+    function selectedIds() { return Object.keys(selected).filter(function (k) { return selected[k]; }); }
     var bar = UI.el('<div class="toolbar ot-bar"></div>');
     var search = UI.el('<input class="ot-search" placeholder="Search organisation, person, email…">');
     search.value = cSearch; search.oninput = function () { cSearch = search.value; repaint(); };
@@ -513,13 +515,45 @@ var Outreach = (function () {
     var exportBtn = btn("⭳ Export", function () { exportContacts(); });
     bar.appendChild(exportBtn);
     bar.appendChild(btn("Import CSV", function () { openImport(main); }));
+    var groupBtn = btn("＋ Add to contact group", function () { openAddToGroup(selectedIds(), function () { drawGroups(); }); });
+    bar.appendChild(groupBtn);
     bar.appendChild(btn("+ Add contact", function () { openAdd(main); }, "primary"));
     body.appendChild(bar);
+    var groupsBar = UI.el('<div class="ot-groups-bar"></div>');
+    body.appendChild(groupsBar);
 
     function selectedIn(list) { return list.filter(function (c) { return selected[c.id]; }); }
     function refreshExportBtn() {
       var n = selectedIn(lastRows).length;
       exportBtn.textContent = n ? "⭳ Export (" + n + ")" : "⭳ Export";
+      var gn = selectedIds().length;
+      groupBtn.textContent = gn ? "＋ Add to contact group (" + gn + ")" : "＋ Add to contact group";
+    }
+    function drawGroups() {
+      groupsBar.innerHTML = "";
+      var groups = allGroups();
+      var strip = UI.el('<div class="ot-groups-strip"><span class="ot-groups-lbl">Groups</span></div>');
+      var allChip = UI.el('<button class="ot-group-chip' + (!groupView ? " on" : "") + '">All contacts</button>');
+      allChip.onclick = function () { groupView = null; repaint(); };
+      strip.appendChild(allChip);
+      groups.forEach(function (g) {
+        var chip = UI.el('<button class="ot-group-chip' + (groupView === g.id ? " on" : "") + '">' + esc(g.name) + ' <span class="ot-group-n">' + ((g.contactIds || []).length) + "</span></button>");
+        chip.onclick = function () { groupView = (groupView === g.id ? null : g.id); repaint(); };
+        strip.appendChild(chip);
+      });
+      if (!groups.length) strip.appendChild(UI.el('<span class="ot-groups-empty">— none yet. Tick some contacts, then “Add to contact group”.</span>'));
+      groupsBar.appendChild(strip);
+      if (groupView) {
+        var g = group(groupView);
+        if (!g) { groupView = null; return; }
+        var hdr = UI.el('<div class="ot-group-head"><div class="ot-group-meta"><b>' + esc(g.name) + '</b><span class="ot-muted"> · ' + ((g.contactIds || []).length) + ' contacts · created ' + esc(fmtDay(g.createdAt)) + ' · updated ' + esc(fmtDay(g.updatedAt)) + "</span></div><div class=\"ot-group-acts\"></div></div>");
+        var acts = hdr.querySelector(".ot-group-acts");
+        var enrollB = btn("Enroll in sequence", function () { openEnrollGroup(g, main); }, "primary"); enrollB.classList.add("btn-sm");
+        acts.appendChild(enrollB);
+        var renameB = UI.el('<button class="btn btn-sm btn-ghost">Rename</button>'); renameB.onclick = function () { renameGroup(g); }; acts.appendChild(renameB);
+        var delB = UI.el('<button class="btn btn-sm btn-danger">Delete</button>'); delB.onclick = function () { confirmDelete("Delete “" + g.name + "”?", "The group is removed. Your contacts stay exactly as they are.", function () { Store.deleteOutreachGroup(g.id); groupView = null; }); }; acts.appendChild(delB);
+        groupsBar.appendChild(hdr);
+      }
     }
     function exportContacts() {
       var chosen = selectedIn(lastRows);
@@ -533,6 +567,7 @@ var Outreach = (function () {
 
     function repaint() {
       host.innerHTML = "";
+      drawGroups();
       // active filter chips
       var active = Object.keys(colFilters).filter(function (k) { return cols().some(function (c) { return c.key === k; }); });
       if (active.length || sortKey) {
@@ -548,6 +583,7 @@ var Outreach = (function () {
       }
 
       var rows = allContacts().filter(matchContact);
+      if (groupView) { var gv = group(groupView); var gids = (gv && gv.contactIds) || []; rows = rows.filter(function (c) { return gids.indexOf(c.id) !== -1; }); }
       if (sortKey) { var cfg = CCOLS.filter(function (c) { return c.key === sortKey; })[0]; rows = rows.slice().sort(function (a, b) { var av = cfg.val(a), bv = cfg.val(b); return (av < bv ? -1 : av > bv ? 1 : 0) * sortDir; }); }
 
       lastRows = rows;
@@ -788,6 +824,72 @@ var Outreach = (function () {
   function allTemplates() { return Store.outreachTemplates(); }
   function allSequences() { return Store.outreachSequences(); }
   function allCampaigns() { return Store.outreachCampaigns(); }
+  function allGroups() { return Store.outreachGroups(); }
+  function group(id) { return allGroups().filter(function (g) { return g.id === id; })[0]; }
+  function fmtDay(ms) { if (!ms) return "—"; try { return new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); } catch (e) { return "—"; } }
+
+  /* ---- contact groups (named lists built from contacts) ---- */
+  function openAddToGroup(ids, onDone) {
+    if (!ids.length) { UI.toast("Tick some contacts first"); return; }
+    var groups = allGroups();
+    var sh = UI.modalShell("Add to contact group");
+    sh.body.innerHTML =
+      '<p class="ot-imp-intro">Add <b>' + ids.length + '</b> contact' + (ids.length === 1 ? "" : "s") + ' to a group. Groups are just named lists of your contacts — use them to enroll people into a sequence.</p>' +
+      (groups.length ? '<div class="field"><label>Add to an existing group</label><select id="ag-group"><option value="">— choose —</option>' + groups.map(function (g) { return '<option value="' + g.id + '">' + esc(g.name) + " (" + ((g.contactIds || []).length) + ")</option>"; }).join("") + "</select></div>" : "") +
+      '<div class="field"><label>' + (groups.length ? "Or create a new group" : "New group name") + '</label><input id="ag-new" placeholder="e.g. London agents – autumn"></div>';
+    sh.foot.appendChild(btn("Cancel", UI.closeModal, ""));
+    sh.foot.appendChild(btn("Add", function () {
+      var newName = (sh.body.querySelector("#ag-new").value || "").trim();
+      var g;
+      if (newName) { g = { id: "g" + Date.now(), name: newName, contactIds: [] }; }
+      else { var selEl = sh.body.querySelector("#ag-group"); if (!selEl || !selEl.value) { sh.body.querySelector("#ag-new").focus(); return; } g = Object.assign({}, group(selEl.value)); }
+      var set = {}; (g.contactIds || []).forEach(function (id) { set[id] = 1; }); ids.forEach(function (id) { set[id] = 1; });
+      g.contactIds = Object.keys(set);
+      Store.saveOutreachGroup(g);
+      UI.closeModal(); UI.toast(ids.length + " added to “" + g.name + "”");
+      if (onDone) onDone();
+    }, "primary"));
+  }
+  function renameGroup(g) {
+    var name = prompt("Rename group", g.name);
+    if (name && name.trim()) { var gg = Object.assign({}, g); gg.name = name.trim(); Store.saveOutreachGroup(gg); }
+  }
+  // enroll a group's contacts into a sequence you pick → opens the send flow preselected
+  function openEnrollGroup(g, main) {
+    var seqs = allSequences();
+    if (!seqs.length) { UI.toast("Create a sequence first"); return; }
+    var sh = UI.modalShell("Enroll “" + g.name + "” in a sequence");
+    var pick = null;
+    sh.body.innerHTML = '<p class="ot-imp-intro">Pick a sequence to enroll the <b>' + ((g.contactIds || []).length) + '</b> contacts in this group.</p><div class="ot-send-seqs" id="eg-seqs"></div>';
+    var w = sh.body.querySelector("#eg-seqs");
+    seqs.forEach(function (s) {
+      var t0 = template((s.steps[0] || {}).templateId);
+      var card = UI.el('<div class="ot-send-seq"><div class="ot-tpl-name">' + esc(s.name) + '</div><div class="ot-seq-meta">' + s.steps.length + " email" + (s.steps.length > 1 ? "s" : "") + " · opens with <b>" + esc((t0 && t0.name) || "—") + "</b></div></div>");
+      card.onclick = function () { pick = s.id; w.querySelectorAll(".ot-send-seq").forEach(function (x) { x.classList.remove("on"); }); card.classList.add("on"); };
+      w.appendChild(card);
+    });
+    sh.foot.appendChild(btn("Cancel", UI.closeModal, ""));
+    sh.foot.appendChild(btn("Enroll", function () { if (!pick) { UI.toast("Pick a sequence"); return; } UI.closeModal(); openSend(main, { seqId: pick, contactIds: (g.contactIds || []).slice() }); }, "primary"));
+  }
+  // enroll contacts into THIS sequence (from the sequence page) → pick a group or go to individuals
+  function openEnrollIntoSequence(s, main) {
+    var groups = allGroups();
+    var sh = UI.modalShell("Enroll contacts into “" + s.name + "”");
+    var pick = null;
+    sh.body.innerHTML = '<p class="ot-imp-intro">Enroll a whole contact group, or pick individuals on the next step.</p>' +
+      (groups.length ? '<div class="ot-send-seqs" id="es-groups"></div>' : '<div class="ot-muted" style="padding:6px 0 2px">No groups yet — make one in <b>Contacts</b> (tick contacts → Add to contact group), or pick individuals below.</div>');
+    if (groups.length) {
+      var w = sh.body.querySelector("#es-groups");
+      groups.forEach(function (g) {
+        var card = UI.el('<div class="ot-send-seq"><div class="ot-tpl-name">' + esc(g.name) + '</div><div class="ot-seq-meta">' + ((g.contactIds || []).length) + " contacts · updated " + esc(fmtDay(g.updatedAt)) + "</div></div>");
+        card.onclick = function () { pick = g.id; w.querySelectorAll(".ot-send-seq").forEach(function (x) { x.classList.remove("on"); }); card.classList.add("on"); };
+        w.appendChild(card);
+      });
+    }
+    sh.foot.appendChild(btn("Cancel", UI.closeModal, ""));
+    sh.foot.appendChild(btn("Pick individuals", function () { UI.closeModal(); openSend(main, { seqId: s.id }); }));
+    sh.foot.appendChild(btn("Enroll group", function () { if (!pick) { UI.toast("Pick a group"); return; } var g = group(pick); UI.closeModal(); openSend(main, { seqId: s.id, contactIds: (g.contactIds || []).slice() }); }, "primary"));
+  }
   function template(id) { return allTemplates().filter(function (t) { return t.id === id; })[0]; }
   function sequence(id) { return allSequences().filter(function (s) { return s.id === id; })[0]; }
   function meSig() { var me = Store.me(); return (me && me.emailSignature) || { text: "", image: "" }; }
@@ -922,10 +1024,12 @@ var Outreach = (function () {
     var runB = btn("Run this sequence", function () { openSend(main); }, "primary"); runB.classList.add("btn-sm");
     var edB = btn("Edit", function () { openSequence(s.id, main); }, ""); edB.classList.add("btn-sm");
     var testB = btn("Test this sequence", function () { openTestSequence(s); }, ""); testB.classList.add("btn-sm");
+    var enrollB = btn("Enroll contacts", function () { openEnrollIntoSequence(s, main); }, ""); enrollB.classList.add("btn-sm");
     var delB = UI.el('<button class="btn btn-sm btn-danger">Delete</button>'); delB.onclick = function () { deleteSequence(s.id, main); };
     head.querySelector(".ot-md-acts").appendChild(delB);
     head.querySelector(".ot-md-acts").appendChild(edB);
     head.querySelector(".ot-md-acts").appendChild(testB);
+    head.querySelector(".ot-md-acts").appendChild(enrollB);
     head.querySelector(".ot-md-acts").appendChild(runB);
     det.appendChild(head);
     var flow = UI.el('<div class="ot-flow"></div>');
@@ -1319,9 +1423,15 @@ var Outreach = (function () {
   }
 
   /* send flow — preview only, never sends */
-  function openSend(main) {
+  function openSend(main, opts) {
+    opts = opts || {};
     var sh = UI.modalShell("Start a send", { wide: true });
-    var st = { seqId: null, selected: {}, step: 1, previewIdx: 0, typeFilter: "all", statusFilter: "to-contact" };
+    var st = { seqId: opts.seqId || null, selected: {}, step: 1, previewIdx: 0, typeFilter: "all", statusFilter: "to-contact" };
+    if (opts.contactIds && opts.contactIds.length) {
+      opts.contactIds.forEach(function (id) { st.selected[id] = true; });
+      st.statusFilter = "all";                       // show enrolled contacts whatever stage they're at
+      if (opts.seqId) st.step = 2;                    // jump to recipients with the group pre-ticked
+    }
     function poolContacts() {
       return allContacts().filter(function (c) {
         if (st.typeFilter !== "all" && c.type !== st.typeFilter) return false;

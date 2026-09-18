@@ -9,7 +9,7 @@
 var Store = (function () {
 
   var MODE = FIREBASE_CONFIG ? "firebase" : "demo";
-  var state = { team: [], tasks: [], notifications: [], docSections: [], docs: [], cities: [], departments: [], studios: [], studioTasks: [], studioArchive: [], suppliers: [], tickets: [], decisions: [], outreachContacts: [], outreachTemplates: [], outreachSequences: [], outreachCampaigns: [], pageAccess: {} };
+  var state = { team: [], tasks: [], notifications: [], docSections: [], docs: [], cities: [], departments: [], studios: [], studioTasks: [], studioArchive: [], suppliers: [], tickets: [], decisions: [], outreachContacts: [], outreachTemplates: [], outreachSequences: [], outreachCampaigns: [], outreachGroups: [], pageAccess: {} };
   var me = null;               // current member object (effective — may be a preview)
   var realMe = null;           // the genuine logged-in account (never a preview)
   var previewId = null;        // set when an Ownership user previews as a teammate
@@ -149,6 +149,7 @@ var Store = (function () {
       if (!state.outreachTemplates) state.outreachTemplates = [];
       if (!state.outreachSequences) state.outreachSequences = [];
       if (!state.outreachCampaigns) state.outreachCampaigns = [];
+      if (!state.outreachGroups) state.outreachGroups = [];
       if (!state.pageAccess) state.pageAccess = {};
       // Back-Log column removed — move any leftover tasks into To Do
       (state.tasks || []).forEach(function (t) { if (t.status === "back-log") t.status = "to-do"; });
@@ -346,6 +347,10 @@ var Store = (function () {
       unsubs.push(db.collection("outreachConfig").doc("campaigns").onSnapshot(function (doc) {
         var d = doc.data();
         state.outreachCampaigns = (d && d.list) ? d.list.slice() : [];
+        emitChange();
+      }));
+      unsubs.push(db.collection("outreachGroups").onSnapshot(function (snap) {
+        state.outreachGroups = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
         emitChange();
       }));
     }
@@ -1154,6 +1159,27 @@ var Store = (function () {
       demoSave(); emitChange(); return Promise.resolve();
     }
     return db.collection("outreachSequences").doc(id).delete();
+  };
+
+  /* ---- outreach contact groups (named lists built from contacts) ---- */
+  api.outreachGroups = function () { return state.outreachGroups; };
+  api.saveOutreachGroup = function (g) {
+    g.updatedAt = now();
+    if (!g.createdAt) g.createdAt = now();
+    if (MODE === "demo") {
+      var i = state.outreachGroups.findIndex(function (x) { return x.id === g.id; });
+      if (i === -1) state.outreachGroups.push(g); else state.outreachGroups[i] = g;
+      demoSave(); emitChange(); return Promise.resolve();
+    }
+    var copy = Object.assign({}, g); delete copy.id;
+    return db.collection("outreachGroups").doc(g.id).set(copy);
+  };
+  api.deleteOutreachGroup = function (id) {
+    if (MODE === "demo") {
+      state.outreachGroups = state.outreachGroups.filter(function (x) { return x.id !== id; });
+      demoSave(); emitChange(); return Promise.resolve();
+    }
+    return db.collection("outreachGroups").doc(id).delete();
   };
 
   /* ---- outreach campaigns (a shared list of labels in one doc) ---- */
