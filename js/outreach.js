@@ -185,6 +185,55 @@ var Outreach = (function () {
       .then(function () { UI.toast("Also copied to your Google Sheet"); })
       .catch(function (e) { if (window.console) console.warn("[Outreach] Sheets sync failed:", e); });
   }
+  /* ---------- Gmail sending (go-live) ----------
+     Sends straight from the signed-in person's Gmail via the Gmail API.
+     Needs OUTREACH_GOOGLE.clientId — a Web OAuth client whose consent screen
+     includes the gmail.send scope. Unconfigured → the Test dialog falls back to
+     opening a pre-filled Gmail compose window instead. */
+  var _gmailTokenClient = null, _gmailToken = null, _gmailTokenExp = 0;
+  function gmailConfigured() { return !!gCfg().clientId; }
+  function getGmailToken() {
+    if (_gmailToken && Date.now() < _gmailTokenExp - 60000) return Promise.resolve(_gmailToken);
+    return loadGis().then(function () {
+      return new Promise(function (resolve, reject) {
+        if (!_gmailTokenClient) _gmailTokenClient = google.accounts.oauth2.initTokenClient({ client_id: gCfg().clientId, scope: "https://www.googleapis.com/auth/gmail.send", callback: function () {} });
+        _gmailTokenClient.callback = function (resp) {
+          if (resp && resp.access_token) { _gmailToken = resp.access_token; _gmailTokenExp = Date.now() + (resp.expires_in || 3600) * 1000; resolve(_gmailToken); }
+          else reject(new Error((resp && resp.error) || "Sign-in was cancelled"));
+        };
+        _gmailTokenClient.requestAccessToken({ prompt: _gmailToken ? "" : "consent" });
+      });
+    });
+  }
+  function b64utf(str) { return btoa(unescape(encodeURIComponent(str))); }
+  function b64url(str) { return b64utf(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+  function chunk76(s) { return s.replace(/.{1,76}/g, "$&\r\n"); }
+  function mimeHeader(s) { return /[^\x00-\x7F]/.test(s) ? "=?UTF-8?B?" + b64utf(s) + "?=" : s; }
+  // RFC822 message; inline data: images become multipart/related CID parts so they render
+  function buildMime(to, subject, html) {
+    var parts = [], n = 0;
+    var html2 = html.replace(/src="data:([^;]+);base64,([^"]+)"/g, function (m, mime, data) {
+      n++; var cid = "img" + n + "@yb"; parts.push({ cid: cid, mime: mime, data: data }); return 'src="cid:' + cid + '"';
+    });
+    var head = "To: " + to + "\r\nSubject: " + mimeHeader(subject) + "\r\nMIME-Version: 1.0\r\n";
+    if (!parts.length) return head + "Content-Type: text/html; charset=UTF-8\r\n\r\n" + html2;
+    var bound = "yb_" + Date.now();
+    var out = head + 'Content-Type: multipart/related; boundary="' + bound + '"\r\n\r\n' +
+      "--" + bound + "\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" + chunk76(b64utf(html2)) + "\r\n";
+    parts.forEach(function (p) {
+      out += "--" + bound + "\r\nContent-Type: " + p.mime + "\r\nContent-Transfer-Encoding: base64\r\nContent-ID: <" + p.cid + ">\r\nContent-Disposition: inline\r\n\r\n" + chunk76(p.data) + "\r\n";
+    });
+    return out + "--" + bound + "--";
+  }
+  function sendGmail(to, subject, html) {
+    return getGmailToken().then(function (token) {
+      return fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: JSON.stringify({ raw: b64url(buildMime(to, subject, html)) })
+      }).then(function (r) { if (!r.ok) return r.text().then(function (t) { throw new Error("Gmail API " + r.status + ": " + t); }); return r.json(); });
+    });
+  }
   function isStale(c) {
     if (c.status !== "contacted" && c.status !== "scheduling") return false;
     var ds = daysSince(c.last); if (ds == null || ds < 7) return false;
@@ -1157,33 +1206,48 @@ var Outreach = (function () {
   function openTestSequence(s) {
     var me = Store.me();
     var tpl = template((s.steps[0] || {}).templateId);
+    var live = gmailConfigured();
     var sh = UI.modalShell("Test this sequence");
     sh.body.innerHTML =
-      '<p class="ot-imp-intro">Send yourself (or anyone) the opening email — <b>' + esc(s.name) + '</b> — to check it lands and reads right. It opens in Gmail, pre-filled and ready to send from your own inbox.</p>' +
+      '<p class="ot-imp-intro">Send yourself (or anyone) the opening email — <b>' + esc(s.name) + '</b> — to check it lands and reads right.' +
+        (live ? ' It sends straight from your Gmail (you’ll approve access the first time).' : ' It opens in Gmail, pre-filled and ready to send from your own inbox.') + '</p>' +
       '<div class="field"><label>Send test to</label><input type="email" id="ts-email" placeholder="you@yellowbellyphoto.com" value="' + esc((me && me.email) || "") + '"></div>' +
-      '<div class="ot-hint-box">Merge fields are filled with a sample contact and it’s signed as you. This quick test sends just the opening email as plain text — inline images and the follow-up aren’t included — so you can check the wording, links and that it arrives.</div>';
+      '<div class="ot-hint-box">Merge fields are filled with a sample contact and it’s signed as you.' +
+        (live ? ' This sends the real opening email — formatting and inline images included. The follow-up isn’t sent from here (it goes on its timer when you run the sequence).'
+              : ' This quick test sends just the opening email as plain text — inline images and the follow-up aren’t included — so you can check the wording, links and that it arrives.') + '</div>';
     function compose() {
       var to = (sh.body.querySelector("#ts-email").value || "").trim();
       if (!to || to.indexOf("@") === -1) { sh.body.querySelector("#ts-email").focus(); return null; }
       if (!tpl) { UI.toast("This sequence has no opening email yet"); return null; }
       var rc = previewRecipient(s.audience);
-      return { to: to, subject: mergeFields(tpl.subject || "", rc), body: testBodyText(tpl, rc, me) };
+      return { to: to, subject: mergeFields(tpl.subject || "", rc), body: testBodyText(tpl, rc, me), html: renderedBody(tpl, rc) };
     }
-    var mailtoBtn = UI.el('<button class="btn btn-sm btn-ghost">Use my default mail app</button>');
-    mailtoBtn.onclick = function () {
-      var m = compose(); if (!m) return;
-      window.location.href = "mailto:" + encodeURIComponent(m.to) + "?subject=" + encodeURIComponent(m.subject) + "&body=" + encodeURIComponent(m.body);
-      UI.closeModal();
-    };
-    var gmailBtn = btn("Open test in Gmail", function () {
+    function openInGmail() {
       var m = compose(); if (!m) return;
       window.open("https://mail.google.com/mail/?view=cm&fs=1&to=" + encodeURIComponent(m.to) + "&su=" + encodeURIComponent(m.subject) + "&body=" + encodeURIComponent(m.body), "_blank", "noopener");
       UI.closeModal();
       UI.toast("Opened a test in Gmail — press Send there to fire it off");
-    }, "primary");
+    }
     sh.foot.appendChild(btn("Cancel", UI.closeModal, ""));
-    sh.foot.appendChild(mailtoBtn);
-    sh.foot.appendChild(gmailBtn);
+    if (live) {
+      var openLink = UI.el('<button class="btn btn-sm btn-ghost">Open in Gmail instead</button>');
+      openLink.onclick = openInGmail;
+      var sendBtn = btn("Send test now", function () {
+        var m = compose(); if (!m) return;
+        var b = sh.foot.querySelector(".ot-sendnow"); if (b) { b.disabled = true; b.textContent = "Sending…"; }
+        sendGmail(m.to, m.subject, m.html)
+          .then(function () { UI.closeModal(); UI.toast("Test sent to " + m.to + " — check the inbox"); })
+          .catch(function (e) { if (b) { b.disabled = false; b.textContent = "Send test now"; } UI.toast("Couldn’t send — " + ((e && e.message) || "access was declined")); });
+      }, "primary");
+      sendBtn.classList.add("ot-sendnow");
+      sh.foot.appendChild(openLink);
+      sh.foot.appendChild(sendBtn);
+    } else {
+      var mailtoBtn = UI.el('<button class="btn btn-sm btn-ghost">Use my default mail app</button>');
+      mailtoBtn.onclick = function () { var m = compose(); if (!m) return; window.location.href = "mailto:" + encodeURIComponent(m.to) + "?subject=" + encodeURIComponent(m.subject) + "&body=" + encodeURIComponent(m.body); UI.closeModal(); };
+      sh.foot.appendChild(mailtoBtn);
+      sh.foot.appendChild(btn("Open test in Gmail", openInGmail, "primary"));
+    }
   }
 
   /* send flow — preview only, never sends */
