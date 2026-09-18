@@ -20,7 +20,10 @@
    account can sync (the OAuth consent screen is set to "Internal").
    ================================================================ */
 window.OUTREACH_GOOGLE = {
-  clientId: "",
+  // Web OAuth client (Google Auth Platform → Clients → "YB HQ Outreach"),
+  // consent screen carries the gmail.send scope + origin https://ybhq.studio.
+  // Enables "Send test now" (real send from the signed-in person's Gmail).
+  clientId: "129769311846-iu0cjhbj2gt7c8fgejlpkch95eskh0t3.apps.googleusercontent.com",
   sheetId: "",
   tab: "Contacts"
 };
