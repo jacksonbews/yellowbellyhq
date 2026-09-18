@@ -274,9 +274,11 @@ var Outreach = (function () {
       '<div class="page-title">Outreach <span class="ot-proto">Prototype</span></div>' +
       '<div class="page-sub">Track outreach to drama schools, casting directors and agents. Add or import your contacts to get started — no emails are sent yet.</div>' +
       '<button class="ot-help" id="ot-help"><span class="ot-help-i">i</span> How to use this page</button>' +
+      '<button class="ot-help ot-help-alt" id="ot-guide"><span class="ot-help-i">✓</span> Sending guidelines</button>' +
       "</div></div>"
     );
     head.querySelector("#ot-help").onclick = openHelp;
+    head.querySelector("#ot-guide").onclick = openSendingRules;
     main.appendChild(head);
     var tabs = UI.el('<div class="ot-tabs">' + TABS.map(function (t) {
       return '<button class="ot-tab' + (tab === t.id ? " on" : "") + (t.start ? " ot-tab-start" : "") + '" data-t="' + t.id + '">' +
@@ -315,6 +317,29 @@ var Outreach = (function () {
       '<div class="ot-help-note">✉︎ Emails send from <b>your own Yellowbelly Gmail</b>, and replies come back to <b>Gmail</b> as normal. This tool <b>tracks</b> the outreach — it isn’t an inbox, so there’s no reply screen here.</div>' +
       '<div class="ot-help-note">📤 <b>Sending safely:</b> to avoid bounces or being marked as spam, emails go out in small batches of up to <b>' + MAX_BATCH + ' at a time</b>, and everyone is <b>BCC’d</b> so no one ever sees anyone else’s address. If you pick more than ' + MAX_BATCH + ', they’re split into batches automatically.</div>' +
       '<div class="ot-help-note">↩︎ <b>If someone replies, the sequence stops.</b> The follow-up nudges only go to people who <i>haven’t</i> written back. The moment a contact replies you move their card to <b>Replied</b> in the Pipeline, which takes them out of the sequence — so their remaining follow-ups are cancelled and you never keep chasing someone who’s already in touch. (In the live Gmail-connected version, a reply cancels the rest on its own.)</div>' +
+      "</div>";
+    sh.foot.appendChild(btn("Got it", UI.closeModal, "primary"));
+  }
+
+  /* Team rules for pacing sends — drip-feed, don't blast. Shareable via the header button. */
+  function openSendingRules() {
+    var sh = UI.modalShell("Sending guidelines", { wide: true });
+    sh.body.innerHTML =
+      '<div class="ot-help-body">' +
+      '<p class="ot-help-lede">Outreach only works if your emails actually reach inboxes. The quickest way into the spam folder is to blast a big list from a cold inbox. <b>Drip-feed instead</b> — a steady, human trickle. These are the team rules for everyone doing outreach.</p>' +
+      '<h4 class="ot-help-h">The drip-feed rules</h4>' +
+      '<ol class="ot-help-steps">' +
+      '<li><b>Warm up a new inbox.</b> If the sending address is new or barely used, start small — around <b>10–15 a day</b> in the first week, then step up gradually over 2–3 weeks. A cold inbox that suddenly fires off 100 goes straight to spam and can get the address flagged.</li>' +
+      '<li><b>Cap the daily volume.</b> Even on a warmed-up inbox, keep it to roughly <b>' + MAX_BATCH + ' a day per sender</b>. Don’t run batch after batch back-to-back to get around it.</li>' +
+      '<li><b>Drip the list, don’t dump it.</b> Never email a whole campaign in one go. Send small daily batches spread across several days. A trickle looks like a person; a spike looks like a machine.</li>' +
+      '<li><b>Leave gaps between emails.</b> Follow-ups wait a few days by design (the sequences use 3). Never chase the same person twice in a day.</li>' +
+      '<li><b>Watch the bounces.</b> If bounces or hard “not interested” replies start climbing, <b>stop</b>, clean the list, and slow right down. Bad addresses damage the sender reputation for the <i>whole team</i>, not just you.</li>' +
+      '<li><b>Keep it personal.</b> Use the merge fields, a real signature, and a genuine reason for reaching out. Identical mass-blasts get filtered; personalised notes get read and replied to.</li>' +
+      '<li><b>Pick sensible times.</b> Weekday mornings (Tue–Thu) land best. Avoid nights and weekends.</li>' +
+      '</ol>' +
+      '<div class="ot-help-note">✅ <b>Before every send,</b> glance at the <b>Deliverability</b> panel in the email editor — it flags spam-trigger words, shouting CAPS and broken merge fields as you type.</div>' +
+      '<div class="ot-help-note">📤 <b>The tool has your back:</b> every send is <b>BCC’d</b> and capped at <b>' + MAX_BATCH + ' per batch</b> automatically, so no recipient sees another and you can’t accidentally blast hundreds at once.</div>' +
+      '<div class="ot-help-note">↩︎ <b>A reply stops the chase.</b> Move a contact to <b>Replied</b> the moment they write back and their remaining follow-ups are cancelled — never keep emailing someone who’s already in touch.</div>' +
       "</div>";
     sh.foot.appendChild(btn("Got it", UI.closeModal, "primary"));
   }
