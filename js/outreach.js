@@ -918,7 +918,7 @@ var Outreach = (function () {
     var det = wrap.querySelector(".ot-md-detail");
     var s = sequence(selSeq);
     if (!s) { det.appendChild(UI.el('<div class="ot-md-empty">No sequences yet — add one with <b>+ New sequence</b>.</div>')); body.appendChild(wrap); return; }
-    var head = UI.el('<div class="ot-md-head"><div><div class="ot-md-title">' + esc(s.name) + '</div><div class="ot-md-meta">' + s.steps.length + ' email' + (s.steps.length > 1 ? "s" : "") + ' · sent to ' + esc(TYPES[s.audience]) + 's in To contact</div></div><div class="ot-md-acts"></div></div>');
+    var head = UI.el('<div class="ot-md-head"><div><div class="ot-md-title">' + esc(s.name) + '</div><div class="ot-md-meta">' + s.steps.length + ' email' + (s.steps.length > 1 ? "s" : "") + ' · you choose who it goes to</div></div><div class="ot-md-acts"></div></div>');
     var runB = btn("Run this sequence", function () { openSend(main); }, "primary"); runB.classList.add("btn-sm");
     var edB = btn("Edit", function () { openSequence(s.id, main); }, ""); edB.classList.add("btn-sm");
     var testB = btn("Test this sequence", function () { openTestSequence(s); }, ""); testB.classList.add("btn-sm");
@@ -1321,34 +1321,54 @@ var Outreach = (function () {
   /* send flow — preview only, never sends */
   function openSend(main) {
     var sh = UI.modalShell("Start a send", { wide: true });
-    var st = { seqId: null, selected: {}, step: 1, previewIdx: 0 };
-    function recipients() { var s = sequence(st.seqId); return allContacts().filter(function (c) { return c.status === "to-contact" && c.type === s.audience; }); }
-    function chosen() { return recipients().filter(function (c) { return st.selected[c.id]; }); }
+    var st = { seqId: null, selected: {}, step: 1, previewIdx: 0, typeFilter: "all", statusFilter: "to-contact" };
+    function poolContacts() {
+      return allContacts().filter(function (c) {
+        if (st.typeFilter !== "all" && c.type !== st.typeFilter) return false;
+        if (st.statusFilter === "all") return true;
+        return c.status === st.statusFilter;
+      });
+    }
+    function chosen() { return allContacts().filter(function (c) { return st.selected[c.id]; }); }
     function draw() {
       if (st.step === 1) {
-        sh.body.innerHTML = '<p class="ot-imp-intro">Pick a sequence. Contacts sitting in <b>To contact</b> for that audience become the recipients.</p><div class="ot-send-seqs"></div>';
+        sh.body.innerHTML = '<p class="ot-imp-intro">Pick a sequence — then you choose exactly who it goes to on the next step.</p><div class="ot-send-seqs"></div>';
         var w = sh.body.querySelector(".ot-send-seqs");
         allSequences().forEach(function (s) {
-          var n = allContacts().filter(function (c) { return c.status === "to-contact" && c.type === s.audience; }).length;
-          var card = UI.el('<div class="ot-send-seq' + (st.seqId === s.id ? " on" : "") + '"><div class="ot-tpl-name">' + esc(s.name) + '</div><div class="ot-seq-meta"><span class="ot-type ot-type-' + s.audience + '">' + esc(TYPES[s.audience]) + '</span> · ' + s.steps.length + ' steps · <b>' + n + '</b> in To contact</div></div>');
+          var t0 = template((s.steps[0] || {}).templateId);
+          var card = UI.el('<div class="ot-send-seq' + (st.seqId === s.id ? " on" : "") + '"><div class="ot-tpl-name">' + esc(s.name) + '</div><div class="ot-seq-meta">' + s.steps.length + ' email' + (s.steps.length > 1 ? "s" : "") + ' · opens with <b>' + esc((t0 && t0.name) || "—") + '</b></div></div>');
           card.onclick = function () { st.seqId = s.id; draw(); };
           w.appendChild(card);
         });
         sh.foot.innerHTML = ""; sh.foot.appendChild(btn("Cancel", UI.closeModal, ""));
-        sh.foot.appendChild(btn("Next: choose recipients", function () { if (!st.seqId) { UI.toast("Pick a sequence"); return; } recipients().forEach(function (c) { st.selected[c.id] = true; }); st.step = 2; draw(); }, "primary"));
+        sh.foot.appendChild(btn("Next: choose recipients", function () { if (!st.seqId) { UI.toast("Pick a sequence"); return; } st.step = 2; draw(); }, "primary"));
       } else if (st.step === 2) {
-        var recs = recipients();
-        sh.body.innerHTML = '<p class="ot-imp-intro">Choose who this goes to — ' + recs.length + ' in To contact for this audience.</p>' +
-          '<div class="ot-batch-note">📤 Everyone is <b>BCC’d</b> (no one sees anyone else), and sends go out in batches of up to <b>' + MAX_BATCH + '</b> to avoid bounces.</div><div class="ot-send-recs"></div>';
+        var pool = poolContacts();
+        sh.body.innerHTML =
+          '<p class="ot-imp-intro">Tick anyone you want this to go to — your call. <b class="ot-sel-count">' + chosen().length + '</b> selected.</p>' +
+          '<div class="ot-send-filters"></div>' +
+          '<label class="ot-send-rec ot-send-all"><input type="checkbox" id="ot-selall"><span class="ot-person-name">Select all shown</span><span class="ot-person-title">' + pool.length + ' contact' + (pool.length === 1 ? "" : "s") + '</span></label>' +
+          '<div class="ot-send-recs"></div>';
+        var fbar = sh.body.querySelector(".ot-send-filters");
+        fbar.appendChild(sel("Type", ["all", "school", "casting", "agent"], st.typeFilter, function (v) { st.typeFilter = v; draw(); }, mergeLabels({ all: "All types" }, TYPES)));
+        fbar.appendChild(sel("Stage", ["to-contact", "all", "contacted", "replied", "scheduling", "booked", "delivered", "closed"], st.statusFilter, function (v) { st.statusFilter = v; draw(); }, { "to-contact": "To contact", all: "Any stage", contacted: "Contacted", replied: "Replied", scheduling: "Scheduling", booked: "Booked", delivered: "Delivered", closed: "Not interested" }));
         var w = sh.body.querySelector(".ot-send-recs");
-        recs.forEach(function (c) {
-          var row = UI.el('<label class="ot-send-rec"><input type="checkbox"' + (st.selected[c.id] ? " checked" : "") + '><span class="ot-person-name">' + esc(c.name || c.email) + '</span><span class="ot-person-title">' + esc(c.org) + '</span></label>');
-          row.querySelector("input").onchange = function (e) { st.selected[c.id] = e.target.checked; };
+        var selAll = sh.body.querySelector("#ot-selall");
+        function refreshSel() {
+          var cnt = sh.body.querySelector(".ot-sel-count"); if (cnt) cnt.textContent = chosen().length;
+          selAll.checked = pool.length > 0 && pool.every(function (x) { return st.selected[x.id]; });
+          selAll.indeterminate = !selAll.checked && pool.some(function (x) { return st.selected[x.id]; });
+        }
+        pool.forEach(function (c) {
+          var row = UI.el('<label class="ot-send-rec"><input type="checkbox"' + (st.selected[c.id] ? " checked" : "") + '><span class="ot-person-name">' + esc(c.name || c.email) + '</span><span class="ot-person-title">' + esc(c.org) + ' · ' + esc(TYPES[c.type] || c.type) + ' · ' + esc(colLabel(c.status)) + '</span></label>');
+          row.querySelector("input").onchange = function (e) { if (e.target.checked) st.selected[c.id] = true; else delete st.selected[c.id]; refreshSel(); };
           w.appendChild(row);
         });
-        if (!recs.length) w.appendChild(UI.el('<div class="ot-muted" style="padding:8px 0">Nothing in To contact for this audience yet — add or import some contacts first.</div>'));
+        if (!pool.length) w.appendChild(UI.el('<div class="ot-muted" style="padding:8px 0">No contacts match these filters — try a different Type or Stage, or add some contacts.</div>'));
+        selAll.onchange = function () { pool.forEach(function (c) { if (selAll.checked) st.selected[c.id] = true; else delete st.selected[c.id]; }); draw(); };
+        refreshSel();
         sh.foot.innerHTML = ""; sh.foot.appendChild(btn("Back", function () { st.step = 1; draw(); }, ""));
-        sh.foot.appendChild(btn("Next: preview", function () { if (!chosen().length) { UI.toast("Select at least one"); return; } st.previewIdx = 0; st.step = 3; draw(); }, "primary"));
+        sh.foot.appendChild(btn("Next: preview", function () { if (!chosen().length) { UI.toast("Tick at least one contact"); return; } st.previewIdx = 0; st.step = 3; draw(); }, "primary"));
       } else if (st.step === 3) {
         var s = sequence(st.seqId), recs = chosen(), c = recs[st.previewIdx] || recs[0];
         var initial = template(s.steps[0].templateId);
@@ -1371,10 +1391,10 @@ var Outreach = (function () {
         sh.foot.appendChild(btn("Log as contacted →", function () {
           var sq = sequence(st.seqId), initTpl = sq ? template(sq.steps[0].templateId) : null;
           recs.forEach(function (c) {
-            c.status = "contacted"; c.last = TODAY; c.next = "Awaiting reply";
+            if (c.status === "to-contact") { c.status = "contacted"; c.last = TODAY; c.next = "Awaiting reply"; }
             if (sq && initTpl) (c.history = c.history || []).push({ on: TODAY, kind: "sent", seqId: sq.id, seqName: sq.name, step: "Initial email", templateId: initTpl.id, subject: initTpl.subject, body: initTpl.body, bodyHtml: initTpl.bodyHtml || "" });
           });
-          UI.closeModal(); UI.toast(recs.length + " moved to Contacted (nothing was emailed)"); persistContacts(recs); api.render(main);
+          UI.closeModal(); UI.toast(recs.length + " logged (nothing was emailed)"); persistContacts(recs); api.render(main);
         }, "primary"));
       }
     }
