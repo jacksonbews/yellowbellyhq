@@ -1079,6 +1079,33 @@ var Outreach = (function () {
   }
   function wireMergeBtns(host, bodyEl) { host.querySelectorAll(".ot-mergebtn").forEach(function (b) { b.onclick = function (e) { e.preventDefault(); insertToken(bodyEl, b.dataset.tok); }; }); }
 
+  /* Pre-send deliverability check — flags things that hurt inbox placement or read badly.
+     Returns a list of short warnings for the current subject + body text. */
+  function deliverabilityIssues(subject, text) {
+    subject = (subject || "").trim(); text = text || "";
+    var issues = [], hay = subject + "\n" + text, low = hay.toLowerCase();
+    var SPAM = ["click here", "buy now", "act now", "limited time", "risk-free", "100% free", "free money", "guaranteed", "you're a winner", "congratulations you", "no cost", "earn money", "make money fast", "order now", "apply now", "cash bonus", "weight loss", "this is not spam", "dear friend", "lowest price", "cheapest", "viagra", "credit card"];
+    var foundSpam = [];
+    SPAM.forEach(function (w) { if (low.indexOf(w) !== -1) foundSpam.push(w); });
+    if (foundSpam.length) issues.push("Spam-trigger word: " + foundSpam.slice(0, 3).join(", ") + (foundSpam.length > 3 ? ", …" : ""));
+    var allow = { YB: 1, HQ: 1, UK: 1, US: 1, USA: 1, CEO: 1, FAQ: 1, URL: 1, PS: 1, RADA: 1, LAMDA: 1, GSA: 1, ARG: 1, BWH: 1, JAG: 1 };
+    var caps = [];
+    (hay.match(/\b[A-Z][A-Z']{2,}\b/g) || []).forEach(function (w) { if (!allow[w] && caps.indexOf(w) === -1) caps.push(w); });
+    if (caps.length) issues.push("ALL-CAPS: " + caps.slice(0, 3).join(", ") + " — reads as shouting");
+    if (/!!|\?\?|!\?|\?!/.test(hay)) issues.push("Repeated !! or ?? — comes across as pushy");
+    var links = (text.match(/https?:\/\/\S+/g) || []).length;
+    if (links > 4) issues.push(links + " links — too many can trip spam filters");
+    if (!subject) issues.push("No subject line");
+    else if (subject.length > 62) issues.push("Long subject (" + subject.length + " chars) — may get cut off");
+    var unknown = [];
+    (hay.match(/\{\{\s*[^}]+?\s*\}\}/g) || []).forEach(function (tok) {
+      var name = tok.replace(/[{}]/g, "").trim();
+      if (["name", "organisation", "jobTitle", "signature"].indexOf(name) === -1 && unknown.indexOf(tok) === -1) unknown.push(tok);
+    });
+    if (unknown.length) issues.push("Unknown merge field " + unknown.slice(0, 2).join(", ") + " — won’t fill in");
+    return issues;
+  }
+
   /* Two-pane sequence editor: edit each email on the left, live inbox preview on the right. */
   function openSequence(id, main, startStep) {
     var s = (id && typeof id === "object") ? id : sequence(id);
@@ -1131,21 +1158,37 @@ var Outreach = (function () {
           '<div class="ot-seq2-lbl">Subject</div><input class="ot-seq2-subj" id="e-subj" value="' + esc(tplWork.subject || "") + '">' +
           '<div class="ot-seq2-lbl ot-seq2-lbl-row"><span>Body</span>' + mergeBtnsHtml() + "</div>" +
           '<div id="e-body" class="ot-tpl-body-edit" contenteditable="true"></div>' +
-          '<div class="ot-body-drophint">Editing this updates the <b>' + esc(tplWork.name) + '</b> template. Drag or paste an image to place it inline.</div>';
+          '<div class="ot-body-drophint">Editing this updates the <b>' + esc(tplWork.name) + '</b> template. Drag or paste an image to place it inline.</div>' +
+          '<div class="ot-seq2-deliver"></div>';
         var bodyEl = host.querySelector("#e-body");
         bodyEl.innerHTML = bodyToHtml(tplWork);
         wireBodyImages(bodyEl); wireMergeBtns(host, bodyEl);
-        bodyEl.addEventListener("input", function () { tplWork.bodyHtml = bodyEl.innerHTML; tplWork.body = bodyEl.innerText; drawPreview(); });
-        host.querySelector("#e-subj").addEventListener("input", function (e) { tplWork.subject = e.target.value; drawPreview(); });
+        bodyEl.addEventListener("input", function () { tplWork.bodyHtml = bodyEl.innerHTML; tplWork.body = bodyEl.innerText; drawPreview(); drawDeliverability(); });
+        host.querySelector("#e-subj").addEventListener("input", function (e) { tplWork.subject = e.target.value; drawPreview(); drawDeliverability(); });
       } else {
         host.innerHTML =
           '<div class="ot-seq2-lbl">Subject</div><div class="ot-seq2-subj-ro">Re: ' + esc((tplWork && tplWork.subject) || "the opening email") + ' <span class="ot-muted">· threads onto the first email</span></div>' +
           '<div class="ot-seq2-lbl ot-seq2-lbl-row"><span>Body</span>' + mergeBtnsHtml() + "</div>" +
-          '<textarea id="e-copy" class="ot-tpl-body-edit ot-seq2-copy">' + esc(step.copy || "") + "</textarea>";
+          '<textarea id="e-copy" class="ot-tpl-body-edit ot-seq2-copy">' + esc(step.copy || "") + "</textarea>" +
+          '<div class="ot-seq2-deliver"></div>';
         var copyEl = host.querySelector("#e-copy");
         wireMergeBtns(host, copyEl);
-        copyEl.addEventListener("input", function () { step.copy = copyEl.value; drawPreview(); });
+        copyEl.addEventListener("input", function () { step.copy = copyEl.value; drawPreview(); drawDeliverability(); });
       }
+      drawDeliverability();
+    }
+    function drawDeliverability() {
+      var host = sh.body.querySelector(".ot-seq2-deliver");
+      if (!host) return;
+      var step = sq.steps[active];
+      if (!step) { host.innerHTML = ""; return; }
+      var subject = step.type === "initial" ? ((tplWork && tplWork.subject) || "") : ("Re: " + ((tplWork && tplWork.subject) || ""));
+      var text = step.type === "initial" ? ((tplWork && tplWork.body) || "") : (step.copy || "");
+      var issues = deliverabilityIssues(subject, text);
+      var head = '<div class="ot-deliver-h">Deliverability</div>';
+      host.innerHTML = head + (issues.length
+        ? issues.map(function (i) { return '<div class="ot-deliver-item">⚠ ' + esc(i) + "</div>"; }).join("")
+        : '<div class="ot-deliver-ok">✓ Looks clean — no red flags</div>');
     }
     function drawSenderBar() {
       var bar = sh.body.querySelector(".ot-seq2-senders");
