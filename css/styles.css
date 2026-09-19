@@ -145,7 +145,22 @@ input, select, textarea { font: inherit; color: inherit; }
   display: flex; flex-direction: column; gap: 52px;
   background: var(--bg);
 }
-.app-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.app-body { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+
+/* thin yellow preview bar across the very top — owner-only profile switcher */
+.preview-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 300;
+  height: 34px; display: flex; align-items: center; gap: 12px;
+  padding: 0 20px;
+  background: var(--ac);
+  border-bottom: 1px solid rgba(0,0,0,.22);
+  font-size: 12px;
+}
+.preview-bar-tag { font-size: 9px; letter-spacing: .16em; font-weight: 700; color: rgba(0,0,0,.6); }
+.preview-bar select { border: 0; background: transparent; font: inherit; font-weight: 600; color: #000; outline: 0; cursor: pointer; max-width: 220px; }
+.preview-bar-note { color: rgba(0,0,0,.55); font-size: 11px; }
+body.has-preview .app { margin-top: 34px; min-height: calc(100vh - 34px); }
+body.has-preview .sidebar { top: 34px; height: calc(100vh - 34px); }
 
 .logo { display: flex; align-items: center; gap: 10px; cursor: default; }
 .logo .hl { font-size: 12px; letter-spacing: .04em; }
@@ -187,16 +202,16 @@ input, select, textarea { font: inherit; color: inherit; }
 .app.nav-open .hamburger span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
 /* slim top bar inside the body — bell / profile / preview switcher */
+/* bell + account float at the very top-right (aligned to the content), so the
+   page heading sits at the very top of the page with no bar above it */
 .topbar {
-  position: sticky; top: 0; z-index: 50;
+  position: absolute; top: 0; left: 0; right: 0; margin: 0 auto; max-width: 1480px;
+  z-index: 40;
   display: flex; align-items: center; justify-content: flex-end;
-  padding: 0 40px;
-  height: 60px;
-  background: rgba(255,255,255,.94);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--hair);
+  padding: 18px 40px 0;
+  pointer-events: none;
 }
-.topbar-right { display: flex; align-items: center; gap: 18px; }
+.topbar-right { display: flex; align-items: center; gap: 18px; pointer-events: auto; }
 
 .demo-switcher { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--hair); padding: 4px 2px; }
 .demo-tag { font-size: 9px; letter-spacing: .16em; color: var(--grey); }
@@ -265,10 +280,10 @@ input, select, textarea { font: inherit; color: inherit; }
 .notif-empty { padding: 40px 18px; text-align: center; color: var(--grey); font-size: 13px; }
 
 /* ================= MAIN / PAGE ================= */
-.main { padding: 48px 40px 100px; width: 100%; max-width: 1480px; margin: 0 auto; }
+.main { padding: 30px 40px 100px; width: 100%; max-width: 1480px; margin: 0 auto; }
 .page-head {
   display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; flex-wrap: wrap;
-  margin-bottom: 8px; padding-bottom: 24px;
+  margin-bottom: 8px; padding-bottom: 24px; padding-right: 104px;
   border-bottom: 1px solid var(--fg);
 }
 .page-title {
@@ -1775,7 +1790,8 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
   }
   .nav { flex-direction: row; gap: 16px; }
   .sidebar-foot { margin-top: 0; flex-direction: row; gap: 16px; }
-  .topbar { padding: 8px 18px; height: auto; }
+  .topbar { padding: 12px 18px 0; }
+  body.has-preview .sidebar { height: auto; }
   /* calendars scroll sideways rather than crush on small screens */
   .week-grid, .month-grid { overflow-x: auto; }
   .month-grid { grid-template-columns: repeat(7, minmax(96px, 1fr)); }
@@ -1824,12 +1840,14 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
   .sidebar-foot .nav-link { justify-content: flex-start; }
 
   /* --- topbar: static (no double sticky), compact --- */
-  .topbar { position: static; padding: 8px 16px; }
+  .topbar { position: static; max-width: none; padding: 8px 16px; pointer-events: auto; }
   .topbar-right { gap: 12px; }
+  body.has-preview .sidebar { height: auto; }
+  .preview-bar-note { display: none; }
 
   /* --- content --- */
   .main { padding: 20px 16px 90px; }
-  .page-head { align-items: flex-start; padding-bottom: 18px; }
+  .page-head { align-items: flex-start; padding-bottom: 18px; padding-right: 0; }
   .page-sub { font-size: 12.5px; }
   .page-actions { width: 100%; }
   .page-actions .btn { flex: 1 1 auto; justify-content: center; }

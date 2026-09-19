@@ -489,6 +489,7 @@ var Outreach = (function () {
   var CCOLS = [
     { key: "org", label: "Organisation", kind: "filter", val: function (c) { return c.org; }, disp: function (v) { return v; } },
     { key: "type", label: "Type", kind: "filter", val: function (c) { return c.type; }, disp: function (v) { return TYPES[v]; } },
+    { key: "city", label: "City", kind: "filter", val: function (c) { return c.city || ""; }, disp: function (v) { return cityLabel(v) || "— none —"; } },
     { key: "name", label: "Name", kind: "sort", val: function (c) { return (c.name || "").toLowerCase(); } },
     { key: "email", label: "Email", kind: "sort", val: function (c) { return c.email.toLowerCase(); } },
     { key: "owner", label: "Owner", kind: "filter", val: function (c) { return c.owner; }, disp: function (v) { return v; }, ownerOnly: true },
@@ -597,8 +598,9 @@ var Outreach = (function () {
       var tb = wrap.querySelector("tbody");
       rows.forEach(function (c) {
         var tds = '<td class="ot-td-check"><input type="checkbox"></td>' + cols().map(function (cfg) {
-          if (cfg.key === "org") return '<td class="ot-cell-name">' + esc(c.org) + '<span class="ot-region">' + esc([cityLabel(c.city), c.region].filter(Boolean).join(" · ")) + "</span></td>";
+          if (cfg.key === "org") return '<td class="ot-cell-name">' + esc(c.org) + (c.region ? '<span class="ot-region">' + esc(c.region) + "</span>" : "") + "</td>";
           if (cfg.key === "type") return '<td><span class="ot-type ot-type-' + c.type + '">' + esc(TYPES[c.type]) + "</span></td>";
+          if (cfg.key === "city") return "<td>" + (c.city ? esc(cityLabel(c.city)) : '<span class="ot-muted">—</span>') + "</td>";
           if (cfg.key === "name") return "<td>" + (c.name ? esc(c.name) + (c.jobTitle ? '<span class="ot-region">' + esc(c.jobTitle) + "</span>" : "") : '<span class="ot-muted">— unknown —</span>') + "</td>";
           if (cfg.key === "email") return '<td class="ot-email">' + esc(c.email) + "</td>";
           if (cfg.key === "owner") return "<td>" + esc(c.owner) + "</td>";

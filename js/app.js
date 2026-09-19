@@ -50,11 +50,15 @@ var App = (function () {
     renderSidebarClocks();
     Notif.render();
 
-    /* "Preview as" — both Ownership tiers can view the HQ as any teammate */
-    var wrap = document.getElementById("demo-switcher-wrap");
+    /* "Preview as" — both Ownership tiers can view the HQ as any teammate.
+       Lives in a thin yellow bar across the very top, only for those people. */
+    var bar = document.getElementById("preview-bar");
     if (Store.canPreviewAs()) {
-      wrap.classList.remove("hidden");
-      wrap.classList.toggle("previewing", Store.isPreviewing());
+      bar.classList.remove("hidden");
+      document.body.classList.add("has-preview");
+      bar.classList.toggle("previewing", Store.isPreviewing());
+      var note = document.getElementById("preview-bar-note");
+      if (note) note.textContent = Store.isPreviewing() ? "— you're viewing HQ as this person" : "— switch to see HQ as anyone on the team";
       var sel = document.getElementById("demo-user-select");
       if (sel.options.length !== Store.team().length) {
         sel.innerHTML = Store.team().map(function (m) {
@@ -63,7 +67,8 @@ var App = (function () {
       }
       sel.value = me.id;
     } else {
-      wrap.classList.add("hidden");
+      bar.classList.add("hidden");
+      document.body.classList.remove("has-preview");
     }
   }
 

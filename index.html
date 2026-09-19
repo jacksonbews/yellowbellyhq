@@ -47,6 +47,12 @@
 </div>
 
 <!-- ============ APP SHELL ============ -->
+<!-- Owner-only preview switcher: a thin yellow bar across the very top -->
+<div id="preview-bar" class="preview-bar hidden">
+  <span class="preview-bar-tag">PREVIEW AS</span>
+  <select id="demo-user-select"></select>
+  <span class="preview-bar-note" id="preview-bar-note"></span>
+</div>
 <div id="app" class="app hidden">
   <aside class="sidebar">
     <div class="logo" id="logo-home"><svg class="logo-svg" role="img" aria-label="Yellowbelly"><use href="#yb-logo"/></svg><span class="hl">( HQ )</span></div>
@@ -72,10 +78,6 @@
   <div class="app-body">
   <header class="topbar">
     <div class="topbar-right">
-      <div id="demo-switcher-wrap" class="demo-switcher hidden">
-        <span class="demo-tag">PREVIEW AS</span>
-        <select id="demo-user-select"></select>
-      </div>
       <div class="bell-wrap">
         <button id="btn-bell" class="icon-btn" title="Notifications" aria-label="Notifications">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
