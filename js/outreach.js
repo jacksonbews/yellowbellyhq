@@ -511,7 +511,6 @@ var Outreach = (function () {
     citySel.onchange = function () { fCity = citySel.value; repaint(); };
     bar.appendChild(citySel);
     bar.appendChild(UI.el('<span class="ot-bar-spacer"></span>'));
-    bar.appendChild(UI.el('<span class="ot-hint-inline">Click a column heading to filter or sort</span>'));
     var exportBtn = btn("⭳ Export", function () { exportContacts(); });
     bar.appendChild(exportBtn);
     bar.appendChild(btn("Import CSV", function () { openImport(main); }));
