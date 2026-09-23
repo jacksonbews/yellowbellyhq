@@ -1632,6 +1632,13 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
 .ot-send-count { font-size: 46px; font-weight: 600; color: #1a2d05; line-height: 1; }
 .ot-send-count-l { font-size: 13px; color: var(--grey); margin-bottom: 16px; }
 .ot-preview-only { font-size: 14px; color: #2c4a0a; background: #eaf1dd; border: 1px solid #d8e3c4; border-radius: 10px; padding: 14px; line-height: 1.5; }
+.ot-send-live-note { font-size: 14px; color: #2c4a0a; background: #eaf1dd; border: 1px solid #d8e3c4; border-radius: 10px; padding: 14px; line-height: 1.5; text-align: left; }
+.ot-send-progress { margin-top: 16px; text-align: left; }
+.ot-send-bar { height: 8px; background: #e6e9e0; border-radius: 5px; overflow: hidden; }
+.ot-send-bar-fill { height: 100%; background: #4a7a12; border-radius: 5px; transition: width .25s ease; }
+.ot-send-stat { font-size: 13px; color: var(--grey); margin-top: 8px; }
+.ot-send-fails { font-size: 12.5px; color: #7a2b1e; background: #fbecea; border: 1px solid #f0cfc9; border-radius: 8px; padding: 10px 12px; margin-top: 12px; line-height: 1.55; }
+.ot-send-confirm { font-size: 13px; color: #7a2b1e; margin-right: auto; align-self: center; }
 .btn-ot { background: #1a2d05; color: #fff; border: 0; padding: 8px 15px; border-radius: var(--radius, 8px); font-size: 13px; font-weight: 500; cursor: pointer; }
 .btn-ot:hover { background: #2c4a0a; }
 .ot-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }

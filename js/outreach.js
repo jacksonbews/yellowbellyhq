@@ -279,8 +279,8 @@ var Outreach = (function () {
     main.innerHTML = "";
     var head = UI.el(
       '<div class="page-head ot-head"><div>' +
-      '<div class="page-title">Outreach <span class="ot-proto">Prototype</span></div>' +
-      '<div class="page-sub">Track outreach to drama schools, casting directors and agents. Add or import your contacts to get started — no emails are sent yet.</div>' +
+      '<div class="page-title">Outreach</div>' +
+      '<div class="page-sub">Track outreach to drama schools, casting directors and agents — write sequences, send them from your own Gmail, and see who’s replied.</div>' +
       '<button class="ot-help" id="ot-help"><span class="ot-help-i">i</span> How to use this page</button>' +
       '<button class="ot-help ot-help-alt" id="ot-guide"><span class="ot-help-i">✓</span> Sending guidelines</button>' +
       "</div></div>"
@@ -1491,6 +1491,71 @@ var Outreach = (function () {
       });
     }
     function chosen() { return allContacts().filter(function (c) { return st.selected[c.id]; }); }
+    // record the opening email against a contact's history + advance the stage
+    function markSent(c, sq, step0) {
+      if (c.status === "to-contact") { c.status = "contacted"; c.last = TODAY; c.next = "Awaiting reply"; }
+      (c.history = c.history || []).push({ on: TODAY, kind: "sent", seqId: sq.id, seqName: sq.name, step: "Initial email", subject: stepSubject(sq, step0), body: stepBodyPlain(sq, step0), bodyHtml: stepBodyHtml(sq, step0) });
+    }
+    // track only — no email leaves; used by "Just log as contacted"
+    function logContacted(recs, sq, step0) {
+      recs.forEach(function (c) { if (step0) markSent(c, sq, step0); });
+      UI.closeModal(); UI.toast(recs.length + " logged as contacted (nothing was emailed)"); persistContacts(recs); api.render(main);
+    }
+    // REAL send: one personalised opening email per contact, straight from the sender's Gmail
+    function runSend(recs, sq, step0) {
+      var valid = recs.filter(function (c) { return c.email && c.email.indexOf("@") !== -1; });
+      var noEmail = recs.length - valid.length;
+      var prog = sh.body.querySelector("#ot-send-prog");
+      sh.foot.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+      if (prog) { prog.style.display = ""; prog.innerHTML = '<div class="ot-send-bar"><div class="ot-send-bar-fill" style="width:0%"></div></div><div class="ot-send-stat">Connecting to Gmail…</div>'; }
+      function stat(msg) { var s = sh.body.querySelector(".ot-send-stat"); if (s) s.textContent = msg; }
+      function bar(pct) { var f = sh.body.querySelector(".ot-send-bar-fill"); if (f) f.style.width = pct + "%"; }
+      var sentContacts = [], failed = [];
+      // fetch the token once up front so the OAuth prompt (if any) happens before the loop
+      getGmailToken().then(function () {
+        var i = 0;
+        function next() {
+          if (i >= valid.length) return finish();
+          var c = valid[i];
+          stat("Sending " + (i + 1) + " of " + valid.length + " — " + (c.name || c.email));
+          bar(Math.round((i / valid.length) * 100));
+          var subject = mergeFields(stepSubject(sq, step0), c);
+          var html = renderedStep(sq, step0, c);
+          sendGmail(c.email, subject, html).then(function () {
+            markSent(c, sq, step0); sentContacts.push(c); i++;
+            setTimeout(next, 400);   // gentle throttle so Gmail doesn't flag a burst
+          }).catch(function (e) {
+            failed.push({ c: c, err: (e && e.message) || "send failed" }); i++;
+            setTimeout(next, 400);
+          });
+        }
+        next();
+      }).catch(function (e) {
+        sh.foot.querySelectorAll("button").forEach(function (b) { b.disabled = false; });
+        stat("");
+        UI.toast("Couldn’t start sending — " + ((e && e.message) || "Gmail access was declined"));
+      });
+      function finish() {
+        bar(100);
+        if (sentContacts.length) persistContacts(sentContacts);
+        var msg = sentContacts.length + " sent";
+        if (failed.length) msg += " · " + failed.length + " failed";
+        if (noEmail) msg += " · " + noEmail + " had no email";
+        stat(msg);
+        if (!failed.length) {
+          UI.closeModal();
+          UI.toast(sentContacts.length + " email" + (sentContacts.length === 1 ? "" : "s") + " sent from your Gmail" + (noEmail ? " (" + noEmail + " skipped — no email address)" : ""));
+          api.render(main);
+        } else {
+          // keep the modal open so the sender can see what didn't go
+          var list = failed.slice(0, 6).map(function (f) { return "• " + esc(f.c.name || f.c.email) + " — " + esc(f.err); }).join("<br>");
+          if (prog) prog.innerHTML += '<div class="ot-send-fails"><b>' + failed.length + ' didn’t send:</b><br>' + list + (failed.length > 6 ? "<br>…and " + (failed.length - 6) + " more" : "") + '</div>';
+          sh.foot.innerHTML = "";
+          sh.foot.appendChild(btn("Close", function () { UI.closeModal(); api.render(main); }, "primary"));
+          UI.toast(sentContacts.length + " sent, " + failed.length + " failed");
+        }
+      }
+    }
     function draw() {
       if (st.step === 1) {
         sh.body.innerHTML = '<p class="ot-imp-intro">Pick a sequence — then you choose exactly who it goes to on the next step.</p><div class="ot-send-seqs"></div>';
@@ -1544,19 +1609,36 @@ var Outreach = (function () {
         sh.foot.appendChild(btn("Continue", function () { st.step = 4; draw(); }, "primary"));
       } else {
         var recs = chosen();
+        var sq = sequence(st.seqId), step0 = sq && sq.steps[0];
+        var canSend = gmailConfigured();
+        var myEmail = (Store.me() && Store.me().email) || "your account";
         sh.body.innerHTML =
-          '<div class="ot-send-done"><div class="ot-send-count">' + recs.length + '</div><div class="ot-send-count-l">recipients ready · ' + Math.ceil(recs.length / MAX_BATCH) + ' batch' + (Math.ceil(recs.length / MAX_BATCH) > 1 ? "es" : "") + ' of up to ' + MAX_BATCH + ', all BCC’d</div>' +
-          '<div class="ot-preview-only">✋ Preview only — <b>nothing was sent.</b> In the real tool, this is where the sequence would go out from your Gmail — BCC’d, in batches of ' + MAX_BATCH + ', so nothing bounces.</div>' +
-          '<div class="ot-gmail-note" style="margin-top:12px">Replies come back to <b>your Gmail</b>, not here — the tool just tracks the outreach.</div></div>';
+          '<div class="ot-send-done"><div class="ot-send-count">' + recs.length + '</div><div class="ot-send-count-l">recipient' + (recs.length === 1 ? "" : "s") + ' ready · sent individually from your Gmail, each one personalised</div>' +
+          (canSend
+            ? '<div class="ot-send-live-note">This sends the opening email of <b>' + esc(sq ? sq.name : "") + '</b> for real — one personalised email per contact, straight from <b>' + esc(myEmail) + '</b>. The first time, Google asks you to allow sending.</div>'
+            : '<div class="ot-preview-only">Sending isn’t switched on yet (no Gmail client ID configured). You can still log these as contacted.</div>') +
+          '<div class="ot-send-progress" id="ot-send-prog" style="display:none"></div>' +
+          '<div class="ot-gmail-note" style="margin-top:12px">Follow-ups aren’t sent automatically — the tool tracks them so you send each when it’s due. Replies come back to <b>your Gmail</b>, not here.</div></div>';
         sh.foot.innerHTML = ""; sh.foot.appendChild(btn("Back", function () { st.step = 3; draw(); }, ""));
-        sh.foot.appendChild(btn("Log as contacted →", function () {
-          var sq = sequence(st.seqId), step0 = sq && sq.steps[0];
-          recs.forEach(function (c) {
-            if (c.status === "to-contact") { c.status = "contacted"; c.last = TODAY; c.next = "Awaiting reply"; }
-            if (step0) (c.history = c.history || []).push({ on: TODAY, kind: "sent", seqId: sq.id, seqName: sq.name, step: "Initial email", subject: stepSubject(sq, step0), body: stepBodyPlain(sq, step0), bodyHtml: stepBodyHtml(sq, step0) });
-          });
-          UI.closeModal(); UI.toast(recs.length + " logged (nothing was emailed)"); persistContacts(recs); api.render(main);
-        }, "primary"));
+        if (canSend && step0) {
+          // normal footer; "Send now" swaps to an inline confirm (UI.confirm would
+          // wipe this whole modal, detaching the live progress UI)
+          function normalFoot() {
+            sh.foot.innerHTML = "";
+            sh.foot.appendChild(btn("Back", function () { st.step = 3; draw(); }, ""));
+            sh.foot.appendChild(btn("Just log as contacted", function () { logContacted(recs, sq, step0); }, ""));
+            sh.foot.appendChild(btn("Send now →", function () {
+              sh.foot.innerHTML = "";
+              var warn = UI.el('<span class="ot-send-confirm">Send ' + recs.length + ' real email' + (recs.length === 1 ? "" : "s") + ' now? This can’t be undone.</span>');
+              sh.foot.appendChild(warn);
+              sh.foot.appendChild(btn("Cancel", normalFoot, ""));
+              sh.foot.appendChild(btn("Yes, send now", function () { runSend(recs, sq, step0); }, "primary"));
+            }, "primary"));
+          }
+          normalFoot();
+        } else {
+          sh.foot.appendChild(btn("Log as contacted →", function () { logContacted(recs, sq, step0); }, "primary"));
+        }
       }
     }
     draw();
