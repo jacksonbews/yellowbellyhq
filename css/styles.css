@@ -1066,6 +1066,8 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
   width: 10px; height: 10px;
   background: var(--ac); border-left: 1px solid var(--fg); border-bottom: 1px solid var(--fg);
 }
+.doc-icon-link { background: var(--ac); }
+.doc-icon-link::before { background: var(--bg); }
 .doc-main { flex: 1 1 200px; min-width: 0; }
 .doc-name { font-weight: 500; font-size: 14.5px; word-break: break-word; display: inline; }
 .doc-restricted { background: var(--fg); color: #fff; border-color: var(--fg); vertical-align: 1px; margin-left: 6px; }

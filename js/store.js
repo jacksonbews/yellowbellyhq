@@ -1427,14 +1427,32 @@ var Store = (function () {
     }).then(function () { return d.id; });
   };
 
+  /* a "doc" that's just a shareable link (Google Drive, etc.) — nothing is
+     uploaded or stored; we keep the URL and open it in a new tab. Same
+     visibility / assignment / sections model as an uploaded PDF. */
+  api.addDocLink = function (sectionId, name, url) {
+    var d = {
+      id: uid(), sectionId: sectionId, name: name, kind: "link", url: url,
+      size: 0, uploadedBy: me.id, uploadedAt: now(),
+      assigneeIds: [], visibility: "everyone", viewerIds: []
+    };
+    if (MODE === "demo") { state.docs.push(d); demoSave(); emitChange(); return Promise.resolve(d.id); }
+    var copy = Object.assign({}, d); delete copy.id;
+    return db.collection("docs").doc(d.id).set(copy).then(function () { return d.id; });
+  };
+
   api.deleteDoc = function (id) {
+    var existing = api.doc(id);
+    var isLink = existing && existing.kind === "link";
     if (MODE === "demo") {
       if (urlCache[id]) { URL.revokeObjectURL(urlCache[id]); delete urlCache[id]; }
-      return idbDel(id).then(function () {
+      var after = function () {
         state.docs = state.docs.filter(function (d) { return d.id !== id; });
         demoSave(); emitChange();
-      });
+      };
+      return isLink ? Promise.resolve().then(after) : idbDel(id).then(after);
     }
+    if (isLink) return db.collection("docs").doc(id).delete();   // no stored file to remove
     return fbStorage.ref("docs/" + id + ".pdf").delete().catch(function () {})
       .then(function () { return db.collection("docs").doc(id).delete(); });
   };
@@ -1459,6 +1477,7 @@ var Store = (function () {
   };
 
   api.getDocUrl = function (doc) {
+    if (doc.kind === "link") return Promise.resolve(doc.url || null);
     if (MODE === "demo") {
       if (urlCache[doc.id]) return Promise.resolve(urlCache[doc.id]);
       return idbGet(doc.id).then(function (blob) {

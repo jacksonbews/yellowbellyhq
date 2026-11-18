@@ -141,6 +141,10 @@ var Docs = (function () {
       actions.appendChild(upload);
       actions.appendChild(fileInput);
 
+      var addLink = UI.el('<button class="btn btn-sm btn-ghost">＋ Add link</button>');
+      addLink.onclick = function () { addDocLink(section); };
+      actions.appendChild(addLink);
+
       var rename = UI.el('<button class="btn btn-sm btn-ghost">Rename</button>');
       rename.onclick = function () { renameSection(section); };
       actions.appendChild(rename);
@@ -167,16 +171,18 @@ var Docs = (function () {
 
   function docRow(d, isAdmin) {
     var by = Store.member(d.uploadedBy);
+    var isLink = d.kind === "link";
     var chips = d.assigneeIds.slice(0, 6).map(function (id) { return UI.avatar(Store.member(id), "sm"); }).join("");
     var restricted = (d.visibility || "everyone") === "restricted";
     var seers = restricted ? ((d.viewerIds || []).length + (d.assigneeIds || []).filter(function (id) { return (d.viewerIds || []).indexOf(id) === -1; }).length) : 0;
+    var lead = isLink ? "Link · added by " : (UI.prettySize(d.size) + " · uploaded by ");
     var row = UI.el(
       '<div class="doc-row">' +
-      '  <span class="doc-icon">PDF</span>' +
+      '  <span class="doc-icon' + (isLink ? " doc-icon-link" : "") + '">' + (isLink ? "LINK" : "PDF") + "</span>" +
       '  <div class="doc-main">' +
       '    <div class="doc-name">' + UI.esc(d.name) +
       (restricted ? ' <span class="chip doc-restricted" title="Only specific people can see this">Restricted</span>' : "") + "</div>" +
-      '    <div class="doc-sub">' + UI.prettySize(d.size) + " · uploaded by " + UI.esc(by ? by.name : "?") +
+      '    <div class="doc-sub">' + lead + UI.esc(by ? by.name : "?") +
       ' · <span title="' + UI.esc(UI.absTime(d.uploadedAt, by ? by.city : null)) + '">' + UI.timeAgo(d.uploadedAt) + "</span>" +
       (restricted && isAdmin ? " · visible to " + seers + " " + (seers === 1 ? "person" : "people") : "") + "</div>" +
       "  </div>" +
@@ -197,8 +203,11 @@ var Docs = (function () {
 
       var del = UI.el('<button class="btn btn-sm btn-ghost" title="Delete">✕</button>');
       del.onclick = function () {
-        UI.confirm("Delete document?", "“" + d.name + "” will be removed for everyone.", "Delete PDF")
-          .then(function (ok) { if (ok) Store.deleteDoc(d.id).then(function () { UI.toast("Document deleted"); }); });
+        UI.confirm(isLink ? "Remove link?" : "Delete document?",
+          isLink ? "“" + d.name + "” will be removed from Company Docs. The file in Google Drive isn’t touched."
+                 : "“" + d.name + "” will be removed for everyone.",
+          isLink ? "Remove link" : "Delete PDF")
+          .then(function (ok) { if (ok) Store.deleteDoc(d.id).then(function () { UI.toast(isLink ? "Link removed" : "Document deleted"); }); });
       };
       actions.appendChild(del);
     }
@@ -207,9 +216,34 @@ var Docs = (function () {
 
   function openDoc(d) {
     Store.getDocUrl(d).then(function (url) {
-      if (!url) { UI.toast("File not found in this browser"); return; }
-      window.open(url, "_blank");
+      if (!url) { UI.toast(d.kind === "link" ? "This link is empty" : "File not found in this browser"); return; }
+      window.open(url, "_blank", "noopener");
     });
+  }
+
+  /* add a shareable link (Google Drive, etc.) instead of uploading a PDF */
+  function addDocLink(section) {
+    var sh = UI.modalShell("Add a link to “" + section.name + "”");
+    sh.body.innerHTML =
+      '<div class="field"><label>Document name</label><input type="text" id="lk-name" placeholder="e.g. Brand Guidelines 2026" maxlength="120"></div>' +
+      '<div class="field"><label>Shareable link</label><input type="url" id="lk-url" placeholder="https://drive.google.com/…"></div>' +
+      '<div class="hint">Paste a Google Drive (or any) share link. Make sure it’s shared so the right people can open it — this just points to it, it doesn’t copy the file. Who sees it here is still controlled by “Who can see”.</div>';
+    var nameEl = sh.body.querySelector("#lk-name");
+    var urlEl = sh.body.querySelector("#lk-url");
+    var cancel = UI.el('<button class="btn btn-ghost">Cancel</button>');
+    cancel.onclick = UI.closeModal;
+    var save = UI.el('<button class="btn btn-primary">Add link</button>');
+    save.onclick = function () {
+      var name = nameEl.value.trim();
+      var url = urlEl.value.trim();
+      if (!name) { nameEl.focus(); return; }
+      if (!/^https?:\/\//i.test(url)) { UI.toast("Enter a full link starting with https://"); urlEl.focus(); return; }
+      save.disabled = true;
+      Store.addDocLink(section.id, name, url).then(function () {
+        UI.closeModal(); UI.toast("Link added");
+      }).catch(function (e) { console.error(e); save.disabled = false; UI.toast("Couldn’t add the link — try again"); });
+    };
+    sh.foot.appendChild(cancel); sh.foot.appendChild(save);
   }
 
   function addSection() {
