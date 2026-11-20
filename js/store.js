@@ -1367,6 +1367,40 @@ var Store = (function () {
     }
     return db.collection("studioTasks").doc(id).delete();
   };
+  /* Duplicate one studio's checklist items (text + Weekly flag only — not the
+     per-week ticks, notes or actions) into other studios. Items a target studio
+     already has (same text, case-insensitive) are skipped so re-running never
+     doubles anything up. Returns { studios, added, skipped }. */
+  api.copyStudioChecklist = function (sourceId, targetIds) {
+    var src = state.studioTasks.filter(function (t) { return t.studioId === sourceId; });
+    var payload = src.map(function (t) { return { text: (t.text || "").trim(), recurring: !!t.recurring }; })
+      .filter(function (p) { return p.text; });
+    var wk = mondayOf(new Date());
+    var result = { studios: 0, added: 0, skipped: 0 };
+    var newTasks = [];
+    (targetIds || []).forEach(function (tid) {
+      if (tid === sourceId) return;
+      result.studios++;
+      var existing = {};
+      state.studioTasks.filter(function (t) { return t.studioId === tid; })
+        .forEach(function (t) { existing[(t.text || "").trim().toLowerCase()] = true; });
+      payload.forEach(function (p) {
+        var key = p.text.toLowerCase();
+        if (existing[key]) { result.skipped++; return; }
+        existing[key] = true;   // guard against the (unlikely) dup within the source
+        result.added++;
+        newTasks.push({ id: uid(), studioId: tid, text: p.text, recurring: p.recurring, done: false, checkedAt: 0, notes: "", actions: "", weekOf: p.recurring ? wk : "" });
+      });
+    });
+    if (!newTasks.length) return Promise.resolve(result);
+    if (MODE === "demo") {
+      state.studioTasks = state.studioTasks.concat(newTasks);
+      demoSave(); emitChange(); return Promise.resolve(result);
+    }
+    var batch = db.batch();
+    newTasks.forEach(function (t) { var c = Object.assign({}, t); delete c.id; batch.set(db.collection("studioTasks").doc(t.id), c); });
+    return batch.commit().then(function () { return result; });
+  };
   /* recurring checks reset at the start of each week so they need doing
      again — but first we archive the closing week so it can be viewed
      later under "last week" in Studio Checklist and Team Reports */

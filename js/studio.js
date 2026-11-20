@@ -16,6 +16,17 @@ var Studio = (function () {
     return Store.cities().filter(function (c) { return ids.indexOf(c.id) !== -1; });
   }
 
+  /* every studio the current user can reach (across their accessible cities),
+     respecting Ownership-only studios like the London Office */
+  function accessibleStudios() {
+    var canOwner = Store.canViewSettings();
+    var out = [];
+    accessibleCities().forEach(function (c) {
+      Store.studiosInCity(c.id).forEach(function (s) { if (!s.ownerOnly || canOwner) out.push(s); });
+    });
+    return out;
+  }
+
   /* open the page at a specific city/studio (e.g. from a notification or
      the Team Reports leaderboard) — lands on the current week */
   api.open = function (cityId, studioId) {
@@ -130,7 +141,16 @@ var Studio = (function () {
   function renderLiveChecklist(wrap, studioId) {
     var tasks = Store.studioTasks(studioId);
     var doneCount = tasks.filter(function (t) { return t.done; }).length;
-    wrap.appendChild(UI.el('<div class="studio-check-head">This week <span class="ppl-n">( ' + doneCount + " / " + tasks.length + " checked )</span></div>"));
+    var head = UI.el('<div class="studio-check-head">This week <span class="ppl-n">( ' + doneCount + " / " + tasks.length + " checked )</span></div>");
+    /* "Copy to other studios" — only worth offering when there are items to copy
+       and at least one other studio to copy them into */
+    var otherStudios = accessibleStudios().filter(function (s) { return s.id !== studioId; });
+    if (tasks.length && otherStudios.length) {
+      var copyBtn = UI.el('<button type="button" class="btn btn-sm btn-ghost sc-copy-btn" title="Duplicate this checklist into other studios">⧉ Copy to other studios</button>');
+      copyBtn.onclick = function () { openCopyModal(studioId); };
+      head.appendChild(copyBtn);
+    }
+    wrap.appendChild(head);
 
     var table = checklistTableShell();
     var tbody = table.querySelector("tbody");
@@ -229,6 +249,78 @@ var Studio = (function () {
         .then(function (ok) { if (ok) Store.deleteStudioTask(t.id); });
     };
     return row;
+  }
+
+  /* Copy the current studio's checklist into other studios (owner/manager picks
+     which). Items already present on a target are skipped, so it never doubles. */
+  function openCopyModal(sourceId) {
+    var source = Store.studios().find(function (s) { return s.id === sourceId; });
+    var items = Store.studioTasks(sourceId);
+    var targets = accessibleStudios().filter(function (s) { return s.id !== sourceId; });
+    var selected = {};
+    targets.forEach(function (s) { selected[s.id] = true; });   // default: all other studios ticked
+
+    var sh = UI.modalShell("Copy checklist to other studios", { wide: true });
+    sh.body.innerHTML =
+      '<p class="ot-imp-intro">Copy all <b>' + items.length + '</b> checklist item' + (items.length === 1 ? "" : "s") +
+      ' from <b>' + UI.esc(source ? source.name : "this studio") + '</b> into the studios you pick below. ' +
+      'Only the task names and their Weekly setting are copied — not this week’s ticks, notes or actions. ' +
+      'Any item a studio already has is skipped, so nothing doubles up.</p>' +
+      '<label class="sc-copy-all"><input type="checkbox" id="sc-copy-all"><span>Select all studios</span></label>' +
+      '<div class="sc-copy-list"></div>';
+
+    var list = sh.body.querySelector(".sc-copy-list");
+    /* group the target studios by city for a tidy list */
+    accessibleCities().forEach(function (c) {
+      var inCity = targets.filter(function (s) { return s.cityId === c.id; });
+      if (!inCity.length) return;
+      list.appendChild(UI.el('<div class="sc-copy-city">' + UI.esc(c.label) + "</div>"));
+      inCity.forEach(function (s) {
+        var row = UI.el('<label class="sc-copy-row"><input type="checkbox"' + (selected[s.id] ? " checked" : "") +
+          '><span class="sc-copy-name">' + UI.esc(s.name) + "</span></label>");
+        row.querySelector("input").onchange = function (e) {
+          if (e.target.checked) selected[s.id] = true; else delete selected[s.id];
+          syncAll();
+        };
+        list.appendChild(row);
+      });
+    });
+
+    var allBox = sh.body.querySelector("#sc-copy-all");
+    function chosenIds() { return Object.keys(selected); }
+    function syncAll() {
+      var n = chosenIds().length;
+      allBox.checked = n === targets.length;
+      allBox.indeterminate = n > 0 && n < targets.length;
+      copyBtn.textContent = n ? "Copy to " + n + " studio" + (n === 1 ? "" : "s") : "Pick a studio";
+      copyBtn.disabled = !n;
+    }
+    allBox.onchange = function () {
+      selected = {};
+      if (allBox.checked) targets.forEach(function (s) { selected[s.id] = true; });
+      list.querySelectorAll('.sc-copy-row input').forEach(function (cb, i) { cb.checked = !!selected[targets[i].id]; });
+      syncAll();
+    };
+
+    var cancel = UI.el('<button class="btn btn-ghost">Cancel</button>');
+    cancel.onclick = UI.closeModal;
+    var copyBtn = UI.el('<button class="btn btn-primary">Copy</button>');
+    copyBtn.onclick = function () {
+      var ids = chosenIds();
+      if (!ids.length) return;
+      copyBtn.disabled = true; copyBtn.textContent = "Copying…";
+      Store.copyStudioChecklist(sourceId, ids).then(function (r) {
+        UI.closeModal();
+        var msg = "Added " + r.added + " item" + (r.added === 1 ? "" : "s") + " across " + r.studios + " studio" + (r.studios === 1 ? "" : "s");
+        if (r.skipped) msg += " · " + r.skipped + " already there";
+        UI.toast(msg);
+      }).catch(function (e) {
+        console.error(e); copyBtn.disabled = false; copyBtn.textContent = "Copy";
+        UI.toast("Couldn’t copy — try again");
+      });
+    };
+    sh.foot.appendChild(cancel); sh.foot.appendChild(copyBtn);
+    syncAll();
   }
 
   return api;
