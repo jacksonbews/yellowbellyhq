@@ -1212,6 +1212,10 @@ table.supplier-table tbody tr:hover { background: var(--cream); }
 .city-row-main { flex: 1; min-width: 0; }
 .city-row-name { font-weight: 500; font-size: 14px; }
 .city-row-tz { font-size: 11px; letter-spacing: .04em; color: var(--grey); margin-top: 1px; }
+.city-row-mgr { font-size: 12px; color: var(--grey); margin-top: 4px; }
+.city-row-mgr .city-mgr-names { color: var(--fg); }
+.city-row-mgr .city-mgr-none { color: var(--grey); font-style: italic; }
+.city-mgr-edit { border: 0; background: none; color: var(--link, #2c4a0a); font-size: 12px; font-weight: 500; cursor: pointer; padding: 0 0 0 6px; text-decoration: underline; }
 .city-row-count { font-size: 12px; color: var(--grey); white-space: nowrap; }
 .city-row-actions { flex: none; }
 

@@ -684,6 +684,35 @@ var Store = (function () {
     return batch.commit();
   };
 
+  /* Set who manages a city's studio checklist. These people show as the studio
+     manager for that city on Studio Checklist and are notified about its items.
+     Adds the city to each chosen person's studioAccess and removes it from
+     everyone else's. (Ownership tiers always see every city regardless.) */
+  api.setCityStudioManagers = function (cityId, memberIds) {
+    memberIds = memberIds || [];
+    var changed = [];
+    state.team.forEach(function (m) {
+      var has = (m.studioAccess || []).indexOf(cityId) !== -1;
+      var want = memberIds.indexOf(m.id) !== -1;
+      if (has === want) return;
+      var acc = (m.studioAccess || []).filter(function (x) { return x !== cityId; });
+      if (want) acc.push(cityId);
+      changed.push({ m: m, acc: acc });
+    });
+    if (!changed.length) return Promise.resolve();
+    if (MODE === "demo") {
+      changed.forEach(function (c) { c.m.studioAccess = c.acc; });
+      demoSave(); emitChange(); return Promise.resolve();
+    }
+    var batch = db.batch();
+    changed.forEach(function (c) { batch.update(db.collection("team").doc(c.m.id), { studioAccess: c.acc }); });
+    return batch.commit();
+  };
+  /* people who currently manage a city's studio checklist */
+  api.cityStudioManagers = function (cityId) {
+    return state.team.filter(function (m) { return (m.studioAccess || []).indexOf(cityId) !== -1; });
+  };
+
   api.addMember = function (data) {
     var base = (data.name || "member").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "member";
     var id = base, n = 2;

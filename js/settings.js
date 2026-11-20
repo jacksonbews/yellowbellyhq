@@ -91,15 +91,22 @@ var Settings = (function () {
     var cityRows = citySec.querySelector("#city-rows");
     cities.forEach(function (c) {
       var count = team.filter(function (m) { return m.city === c.id; }).length;
+      var mgrs = Store.cityStudioManagers(c.id);
+      var mgrNames = mgrs.length ? mgrs.map(function (m) { return UI.esc(m.name); }).join(", ") : '<span class="city-mgr-none">No one yet</span>';
       var row = UI.el(
         '<div class="city-row">' +
         '  <span class="city-row-time" data-citytime="' + UI.esc(c.id) + '">' + UI.cityTime(c.id) + "</span>" +
         '  <div class="city-row-main"><div class="city-row-name">' + UI.esc(c.label) + "</div>" +
-        '    <div class="city-row-tz">' + UI.esc(c.tz) + "</div></div>" +
+        '    <div class="city-row-tz">' + UI.esc(c.tz) + "</div>" +
+        '    <div class="city-row-mgr">Studio checklist: <span class="city-mgr-names">' + mgrNames + "</span>" +
+        (canEdit ? ' <button type="button" class="city-mgr-edit">Edit</button>' : "") + "</div></div>" +
         '  <span class="city-row-count">' + count + " " + (count === 1 ? "person" : "people") + "</span>" +
         '  <span class="city-row-actions"></span>' +
         "</div>"
       );
+      if (canEdit) {
+        row.querySelector(".city-mgr-edit").onclick = function () { editCityManagers(c); };
+      }
       if (canCities) {
         var del = UI.el('<button class="btn btn-sm btn-ghost" title="Remove city">✕</button>');
         del.onclick = function () {
@@ -322,7 +329,7 @@ var Settings = (function () {
       "  </div>" +
       '  <span class="st-profile"></span>' +
       '  <span class="st-dept-mount" title="Departments"></span>' +
-      '  <select class="st-select st-city" title="City / studio" ' + (canEdit ? "" : "disabled") + ">" +
+      '  <select class="st-select st-city" title="Home city (clock / timezone). Studio-checklist managers are set per city under Cities &amp; Timezones." ' + (canEdit ? "" : "disabled") + ">" +
       Store.cities().map(function (c) { return '<option value="' + c.id + '">' + UI.esc(c.label) + "</option>"; }).join("") +
       "  </select>" +
       '  <select class="st-select st-role" title="Access level" ' + (canEdit ? "" : "disabled") + ">" +
@@ -421,6 +428,29 @@ var Settings = (function () {
       if (!name) { sh.body.querySelector("#ct-name").focus(); return; }
       Store.addCity(name, sh.body.querySelector("#ct-tz").value, sh.body.querySelector("#ct-dial").value.trim())
         .then(function () { UI.closeModal(); UI.toast(name + " added"); });
+    };
+    sh.foot.appendChild(cancel); sh.foot.appendChild(save);
+  }
+
+  /* assign who manages a city's studio checklist (shows as the studio manager
+     on Studio Checklist + gets notified about that city's items) */
+  function editCityManagers(c) {
+    var selected = Store.cityStudioManagers(c.id).map(function (m) { return m.id; });
+    var sh = UI.modalShell("Studio checklist managers — " + c.label);
+    sh.body.innerHTML =
+      '<p class="ot-imp-intro">Pick who manages the <b>' + UI.esc(c.label) + '</b> studio checklist. ' +
+      'They appear as the studio manager for ' + UI.esc(c.label) + ' on the Studio Checklist page and are notified when items are added. ' +
+      'Ownership can always see every studio regardless.</p>' +
+      '<div class="field"><label>Managers</label><div id="cm-people"></div></div>';
+    sh.body.querySelector("#cm-people").appendChild(UI.peopleSelect(selected, {}));
+    var cancel = UI.el('<button class="btn btn-ghost">Cancel</button>');
+    cancel.onclick = UI.closeModal;
+    var save = UI.el('<button class="btn btn-primary">Save managers</button>');
+    save.onclick = function () {
+      save.disabled = true;
+      Store.setCityStudioManagers(c.id, selected.slice()).then(function () {
+        UI.closeModal(); UI.toast(c.label + " studio managers updated");
+      }).catch(function (e) { console.error(e); save.disabled = false; UI.toast("Couldn’t save — try again"); });
     };
     sh.foot.appendChild(cancel); sh.foot.appendChild(save);
   }
